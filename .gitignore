@@ -1,0 +1,13 @@
+# Rust
+target/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 系统与 IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
