@@ -1,0 +1,3 @@
+# tauri 构建产物与生成目录
+/target
+/gen/schemas
