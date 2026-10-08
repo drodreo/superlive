@@ -1,0 +1,36 @@
+[package]
+name = "slsdk-rs"
+version = "0.2.0"
+edition = "2021"
+description = "superlive v2 Plane B contract layer: manifest types, the registration protocol, lifecycle, and the serve() skeleton (protocol reference implementation)"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+# Integrity verification for installed package files (manifest.files[].sha256)
+sha2 = "0.10"
+# Constant-time token comparison, guards against timing side channels (architecture.md "Security")
+subtle = "2"
+# Config endpoint: dynamic write-back to config.toml (preserving unrecognized sections) and GET value merging (architecture.md "Configuration Plane")
+toml = "0.8"
+# Validation semantics for format="cron" aligned with sl-finance (Schedule parsing from the same crate at the same version)
+cron = "0.12"
+# Features aligned with actual usage: rt-multi-thread (runtime) / net (Listener) / signal (SIGTERM) /
+# sync (watch channels) / io-util+io-std (Windows stdin shutdown) / fs (config.toml read/write).
+# The dependency surface is an outward promise — extra features would be inherited by the shell and all component server downstreams
+tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "sync", "io-util", "io-std", "fs"] }
+axum = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+# #[tokio::test] macro for tests
+tokio = { version = "1", features = ["macros", "rt"] }
+# tests/serve.rs: UDS client (zero usage in src, test-only dependency)
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", "tokio"] }
+# The UDS connector of the hyper-util legacy client needs Service<Uri> (tower-service is the Service trait itself)
+tower-service = "0.3"
+# Response body collection for the legacy client
+http-body-util = "0.1"
+# UdsIo needs to implement hyper::rt::Read/Write (not directly re-exported by hyper-util)
+hyper = "1"
