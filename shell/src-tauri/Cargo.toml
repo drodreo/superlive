@@ -1,0 +1,57 @@
+[package]
+name = "superlive-shell"
+version = "0.2.0"
+edition = "2021"
+description = "superlive v2 componentized platform shell: registry + unified API gateway + component lifecycle management"
+
+[lib]
+name = "superlive_shell_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "process", "net", "io-util", "time", "macros", "sync", "fs"] }
+axum = { version = "0.8", features = ["ws"] }
+# Only the TokioIo adapter is used (the gateway/lifecycle hyper conn ↔ tokio IO bridge)
+hyper-util = { version = "0.1", features = ["tokio"] }
+# gateway: hyper conn handshake (forwarding / ws pump) and the TokioIo adapter
+# (client conn used hop-by-hop: after hyper-util's trimming it no longer
+# propagates the enabling, so an explicit declaration is needed)
+hyper = { version = "1", features = ["client", "http1", "server"] }
+# Health probe response body collection (BodyExt)
+http-body-util = "0.1"
+# Token constant-time comparison (same scheme as slsdk-rs, guarding against
+# timing side channels)
+subtle = "2"
+# per-component / shell-level token generation
+rand = "0.9"
+# Install package extraction: the package format is defined by this repo, so
+# only deflate is enabled to cut the default full compression-format dependencies
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# Plane B contract SDK: the shell references it as the adjudicator
+# (manifest validation / registration protocol), same-repo path
+slsdk-rs = { path = "../../slsdk-rs" }
+# Configuration-plane shell-side required-field comparison: reads the
+# component's config.toml as a table (upgrade drift detection, rule 3).
+# Version aligned with slsdk-rs's toml so Cargo converges to one instance and
+# both ends parse identically
+toml = "0.8"
+
+# unix graceful exit sends SIGTERM (tokio only has SIGKILL-grade start_kill;
+# nix is the safe wrapper, no unsafe)
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal"] }
+
+[dev-dependencies]
+# Temp directories for the installer/lifecycle tests
+tempfile = "3"
+# The installer tests compute files fingerprints (same as slsdk-rs)
+sha2 = "0.10"
+# Test-side router.oneshot (auth/gateway/server tests)
+tower = "0.5"

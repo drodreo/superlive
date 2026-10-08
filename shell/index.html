@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>superlive</title>
+    <!--
+      Shared-library whitelist import map (architecture.md "Plane A contract":
+      react/react-dom/rxjs/@shell/sdk locked to singletons). Must be injected
+      statically before any module script:
+      module-tier components are loaded via dynamic import (cross-origin
+      http://127.0.0.1:39876/comps/...), and the bare imports inside their
+      bundles (import "react" etc.) are resolved by this map to the shell's
+      same-origin vendor artifacts — every "react" in the app points at the
+      same URL, so the react module instance is unique.
+      The vendor files are provided by vite builds (shim entries), esbuild
+      direct bundling (rxjs and @shell/sdk/ui), and public/vendor/ (static
+      copy of @shell/sdk); in both dev and build modes the URLs have the same
+      shape (see vite.config.ts).
+      @shell/sdk/ui is a subpath of @shell/sdk (the slsdk-ts ui entry: shared
+      UI facilities); its bare react/react-dom imports are likewise locked to
+      singletons via this map.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/vendor/react.js",
+          "react/jsx-runtime": "/vendor/react-jsx-runtime.js",
+          "react/jsx-dev-runtime": "/vendor/react-jsx-dev-runtime.js",
+          "react-dom": "/vendor/react-dom.js",
+          "react-dom/client": "/vendor/react-dom-client.js",
+          "rxjs": "/vendor/rxjs.js",
+          "@shell/sdk": "/vendor/slsdk.js",
+          "@shell/sdk/ui": "/vendor/slsdk-ui.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

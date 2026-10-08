@@ -1,0 +1,27 @@
+{
+  "name": "superlive-shell",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "esbuild": "0.25.12",
+    "typescript": "^5",
+    "vite": "^6"
+  }
+}
