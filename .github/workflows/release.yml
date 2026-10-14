@@ -16,10 +16,15 @@ jobs:
         include:
           - os: ubuntu-latest
             bundles: deb
+            attach: shell/src-tauri/target/release/bundle/deb/*.deb
           - os: macos-latest
             bundles: app,dmg
+            attach: |
+              shell/src-tauri/target/release/bundle/dmg/*.dmg
+              shell/src-tauri/target/release/bundle/macos/*.app.tar.gz
           - os: windows-latest
             bundles: msi
+            attach: shell/src-tauri/target/release/bundle/msi/*.msi
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -63,10 +68,7 @@ jobs:
         with:
           name: superlive-${{ runner.os }}
           path: |
-            shell/src-tauri/target/release/bundle/deb/*.deb
-            shell/src-tauri/target/release/bundle/dmg/*.dmg
-            shell/src-tauri/target/release/bundle/macos/*.app.tar.gz
-            shell/src-tauri/target/release/bundle/msi/*.msi
+            ${{ matrix.attach }}
             shell/src-tauri/target/release/bundle/**/*.sig
           if-no-files-found: error
 
@@ -74,10 +76,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            shell/src-tauri/target/release/bundle/deb/*.deb
-            shell/src-tauri/target/release/bundle/dmg/*.dmg
-            shell/src-tauri/target/release/bundle/msi/*.msi
+          files: ${{ matrix.attach }}
 
   # The updater endpoint points at latest.json on the release; tauri only
   # produces the bundles and .sig files, so the manifest is assembled here
