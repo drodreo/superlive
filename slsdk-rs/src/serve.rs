@@ -293,8 +293,9 @@ pub async fn serve_with_config(
     #[cfg(windows)]
     let (join, serve_endpoint) = match &endpoint {
         Endpoint::Tcp { addr } => {
-            let listener =
-                tokio::net::TcpListener::bind(addr).map_err(|source| ServeError::Listen {
+            let listener = tokio::net::TcpListener::bind(addr)
+                .await
+                .map_err(|source| ServeError::Listen {
                     endpoint: endpoint.clone(),
                     source,
                 })?;
