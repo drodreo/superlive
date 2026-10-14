@@ -1,6 +1,6 @@
 [package]
 name = "superlive-shell"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "superlive v2 componentized platform shell: registry + unified API gateway + component lifecycle management"
 
