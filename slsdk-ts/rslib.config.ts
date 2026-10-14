@@ -22,10 +22,13 @@ export default defineConfig({
     externals: {
       // Whitelisted shared libs are provided as singletons by the host (the shell webview import map), not inlined at build time:
       // rxjs is a peerDependency of the api entry's observe; react/react-dom are peerDependencies of the ui entry
-      // component facility (prevents duplicate React/rxjs instances; aligns with the shell whitelist)
+      // component facility (prevents duplicate React/rxjs instances; aligns with the shell whitelist);
+      // i18next is externalized for the ui entry's registerI18n — the shared i18next instance
+      // (the component i18n contract: components register namespaces into the host's instance)
       rxjs: 'rxjs',
       react: 'react',
       'react-dom': 'react-dom',
+      i18next: 'i18next',
     },
   },
 });

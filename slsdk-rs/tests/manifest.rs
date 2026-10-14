@@ -41,7 +41,7 @@ fn serde_roundtrip_preserves_manifest() {
     let re = serde_json::to_string(&manifest).unwrap();
     let back: ComponentManifest = serde_json::from_str(&re).unwrap();
     assert_eq!(manifest, back);
-    assert_eq!(back.ui.ui_type, UiType::Module);
+    assert_eq!(back.ui.as_ref().unwrap().ui_type, UiType::Module);
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn full_fixture_parses_with_expected_fields() {
     assert_eq!(m.namespace, "todo");
     assert_eq!(m.display_name, "XaTodo");
     assert_eq!(m.min_shell_version, "0.1.0");
-    assert_eq!(m.ui.entry, "assets/main.js");
+    assert_eq!(m.ui.as_ref().unwrap().entry, "assets/main.js");
     assert_eq!(m.menu.as_ref().unwrap().title, "待办");
     assert_eq!(
         m.menu.as_ref().unwrap().icon_path.as_deref(),
@@ -59,8 +59,11 @@ fn full_fixture_parses_with_expected_fields() {
     );
     assert_eq!(m.routes.len(), 1);
     assert_eq!(m.routes[0].path, "/todo");
-    assert_eq!(m.launch.command, "xatodo-server");
-    assert_eq!(m.launch.args, vec!["--config", "config.toml"]);
+    assert_eq!(m.launch.as_ref().unwrap().command, "xatodo-server");
+    assert_eq!(
+        m.launch.as_ref().unwrap().args,
+        vec!["--config", "config.toml"]
+    );
     assert_eq!(m.files.len(), 2);
     assert!(m.validate().is_ok(), "fixture itself must be valid");
 }
@@ -176,6 +179,104 @@ fn validate_rejects_empty_namespace() {
         m.validate(),
         Err(ManifestError::EmptyField { field: "namespace" })
     ));
+}
+
+// ---------- shape variants: pure-frontend / pure-backend / legacy manifests ----------
+
+#[test]
+fn declaration_level_accepts_empty_files_package_level_rejects() {
+    // A dev manifest.json is a pure declaration (files empty): it passes the
+    // declaration-level gate and is rejected only at the package level
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.files.clear();
+    assert!(
+        m.validate_declaration().is_ok(),
+        "a pure declaration (files empty) must pass the declaration gate"
+    );
+    assert!(matches!(m.validate(), Err(ManifestError::EmptyFiles)));
+}
+
+#[test]
+fn declaration_level_covers_the_shared_rule_set() {
+    // The declaration gate keeps every rule except the files rules: a broken
+    // namespace / id / version is caught at declaration level too
+    let mut bad_ns: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    bad_ns.files.clear();
+    bad_ns.namespace = "bad/ns".to_string();
+    assert!(matches!(
+        bad_ns.validate_declaration(),
+        Err(ManifestError::InvalidNamespace(_))
+    ));
+
+    let mut bad_version: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    bad_version.files.clear();
+    bad_version.version = String::new();
+    assert!(matches!(
+        bad_version.validate_declaration(),
+        Err(ManifestError::EmptyField { field: "version" })
+    ));
+}
+
+#[test]
+fn pure_frontend_shape_validates() {
+    // launch=None + ui present: the pure-frontend shape carries no extra
+    // constraint
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.launch = None;
+    assert!(m.ui.is_some());
+    assert!(m.validate().is_ok());
+}
+
+#[test]
+fn pure_backend_shape_validates() {
+    // ui=None + empty mounts: the pure-backend shape validates as long as no
+    // mount points are declared
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.ui = None;
+    m.routes.clear();
+    m.menu = None;
+    assert!(m.launch.is_some());
+    assert!(m.validate().is_ok());
+}
+
+#[test]
+fn pure_backend_with_routes_rejected() {
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.ui = None;
+    m.menu = None;
+    // routes stay non-empty: no UI, yet a mount point is declared
+    assert!(!m.routes.is_empty());
+    assert!(matches!(m.validate(), Err(ManifestError::MountWithoutUi)));
+}
+
+#[test]
+fn pure_backend_with_menu_rejected() {
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.ui = None;
+    m.routes.clear();
+    // menu stays Some: no UI, yet a mount point is declared
+    assert!(m.menu.is_some());
+    assert!(matches!(m.validate(), Err(ManifestError::MountWithoutUi)));
+}
+
+#[test]
+fn manifest_without_ui_and_launch_keys_deserializes_to_none() {
+    // Old contract (no ui/launch keys): serde(default) deserializes both to
+    // None — existing manifests keep parsing
+    let json = r#"{
+      "id": "legacy",
+      "version": "0.1.0",
+      "min_shell_version": "0.1.0",
+      "namespace": "legacy",
+      "display_name": "Legacy",
+      "menu": null,
+      "routes": [],
+      "files": [ { "path": "bin", "sha256": "aa" } ]
+    }"#;
+    let m: ComponentManifest = serde_json::from_str(json).unwrap();
+    assert!(m.ui.is_none());
+    assert!(m.launch.is_none());
+    assert!(m.validate().is_ok());
 }
 
 // ---------- verify_files: pass/tampered/missing/extra ----------
@@ -382,6 +483,115 @@ fn legacy_manifest_without_config_section_is_compatible() {
     let m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
     assert!(m.config.is_none());
     assert!(m.validate().is_ok());
+}
+
+// ---------- localized titles (architecture.md "Localized titles") ----------
+
+#[test]
+fn legacy_manifest_without_titles_deserializes_to_empty_maps() {
+    // Old manifests carry no titles key on menu or routes: serde(default)
+    // yields empty maps — every legacy manifest stays valid unchanged
+    let m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    assert!(m.menu.as_ref().unwrap().titles.is_empty());
+    assert!(m.routes[0].titles.is_empty());
+    assert!(m.validate().is_ok());
+}
+
+#[test]
+fn titles_roundtrip_and_wire_form() {
+    // The wire form is a flat locale → string map on both menu and routes;
+    // a round-trip preserves the entries
+    let json = FIXTURE
+        .replace(
+            r#""menu": { "title": "待办", "icon_path": "assets/icon.svg" }"#,
+            r#""menu": { "title": "待办", "icon_path": "assets/icon.svg", "titles": { "zh": "待办", "en": "Todo" } }"#,
+        )
+        .replace(
+            r#""routes": [ { "path": "/todo", "title": "待办列表" } ]"#,
+            r#""routes": [ { "path": "/todo", "title": "待办列表", "titles": { "zh": "待办列表", "en": "Todo list" } } ]"#,
+        );
+    let m: ComponentManifest = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        m.menu
+            .as_ref()
+            .unwrap()
+            .titles
+            .get("en")
+            .map(String::as_str),
+        Some("Todo")
+    );
+    assert_eq!(
+        m.routes[0].titles.get("zh").map(String::as_str),
+        Some("待办列表")
+    );
+    assert!(m.validate().is_ok());
+
+    let re = serde_json::to_string(&m).unwrap();
+    let back: ComponentManifest = serde_json::from_str(&re).unwrap();
+    assert_eq!(m, back);
+}
+
+#[test]
+fn empty_titles_map_is_omitted_populated_map_is_serialized() {
+    // skip_serializing_if: a single-language manifest serializes without the
+    // titles key (legacy package bytes stay identical); a populated map lands
+    // on the wire under the plain "titles" name
+    let m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    let single = serde_json::to_string(&m).unwrap();
+    assert!(
+        !single.contains("titles"),
+        "an empty titles map must be omitted at serialization"
+    );
+
+    let mut localized = m.clone();
+    localized
+        .menu
+        .as_mut()
+        .unwrap()
+        .titles
+        .insert("zh".to_string(), "待办".to_string());
+    let wire = serde_json::to_value(localized.menu.as_ref().unwrap()).unwrap();
+    assert_eq!(wire["titles"]["zh"], "待办");
+}
+
+#[test]
+fn validate_rejects_empty_locale_key_in_menu_titles() {
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.menu
+        .as_mut()
+        .unwrap()
+        .titles
+        .insert(String::new(), "Todo".to_string());
+    assert!(matches!(
+        m.validate(),
+        Err(ManifestError::InvalidTitles { at, reason })
+            if at == "menu" && reason == "empty locale key"
+    ));
+}
+
+#[test]
+fn validate_rejects_empty_value_in_menu_titles() {
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.menu
+        .as_mut()
+        .unwrap()
+        .titles
+        .insert("zh".to_string(), String::new());
+    assert!(matches!(
+        m.validate(),
+        Err(ManifestError::InvalidTitles { at, reason }) if at == "menu" && reason == "empty value"
+    ));
+}
+
+#[test]
+fn validate_rejects_empty_value_in_route_titles() {
+    let mut m: ComponentManifest = serde_json::from_str(FIXTURE).unwrap();
+    m.routes[0].titles.insert("en".to_string(), String::new());
+    assert!(matches!(
+        m.validate(),
+        Err(ManifestError::InvalidTitles { at, reason })
+            if at == "routes[0]" && reason == "empty value"
+    ));
 }
 
 #[test]

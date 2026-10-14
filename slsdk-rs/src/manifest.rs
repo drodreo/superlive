@@ -5,7 +5,8 @@
 //! carries a fixed manifest (id / version / compatible shell version / namespace / menu and
 //! route registration declarations / launch command / per-file fingerprints / structured
 //! config declaration); after extraction the shell verifies fingerprints file by file before
-//! landing the files.
+//! landing the files. The UI declaration and the launch command are both optional:
+//! `ui = None` is the pure-backend shape, `launch = None` the pure-frontend shape.
 //!
 //! Field names keep their Rust snake_case form with no rename: the shell and this crate are
 //! both Rust and share this single type definition, so structural isomorphism on both ends
@@ -13,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::path::Path;
 
@@ -33,15 +34,22 @@ pub struct ComponentManifest {
     pub namespace: String,
     /// Display name (used by menu / settings pages).
     pub display_name: String,
-    /// UI declaration (module / iframe tiers).
-    pub ui: UiDeclaration,
+    /// UI declaration (module / iframe tiers); `None` = pure-backend shape
+    /// (no UI mount surface: menu / routes must both be empty per
+    /// [`ComponentManifest::validate`], and the shell exposes no
+    /// `/comps/{id}` entry).
+    #[serde(default)]
+    pub ui: Option<UiDeclaration>,
     /// Menu registration declaration; omit if no menu is registered.
     pub menu: Option<MenuDeclaration>,
     /// Route registration declarations: where the component UI mounts in the shell's main
     /// route tree.
     pub routes: Vec<RouteDeclaration>,
-    /// Component backend launch: the command the shell spawns as a subprocess.
-    pub launch: LaunchConfig,
+    /// Component backend launch: the command the shell spawns as a subprocess;
+    /// `None` = pure-frontend shape (the shell spawns no backend process, so
+    /// the namespace has no gateway forwarding target).
+    #[serde(default)]
+    pub launch: Option<LaunchConfig>,
     /// Package file list (relative paths + sha256), verified file by file by
     /// [`verify_files`] after extraction.
     pub files: Vec<FileEntry>,
@@ -81,6 +89,14 @@ pub struct UiDeclaration {
 pub struct MenuDeclaration {
     pub title: String,
     pub icon_path: Option<String>,
+    /// Localized titles (locale → title; architecture.md "Localized titles").
+    /// Absent or empty = a single-language entry (the [`MenuDeclaration::title`]
+    /// fallback alone): `serde(default)` keeps legacy manifests without the key
+    /// parsing unchanged, and `skip_serializing_if` omits an empty map so legacy
+    /// package bytes stay identical. Consumed by the shell's i18n injection into
+    /// the component's own namespace under the fixed `menuTitle` key.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub titles: BTreeMap<String, String>,
 }
 
 /// Route registration declaration. The field set is the minimal v1 set, to be refined when
@@ -89,6 +105,10 @@ pub struct MenuDeclaration {
 pub struct RouteDeclaration {
     pub path: String,
     pub title: String,
+    /// Localized titles (locale → title), same contract as
+    /// [`MenuDeclaration::titles`].
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub titles: BTreeMap<String, String>,
 }
 
 /// Component backend launch config: the shell spawns an independent subprocess with
@@ -218,6 +238,13 @@ pub enum ManifestError {
     /// The config section declaration is illegal (empty key / empty or whitespace segments /
     /// select tier missing options).
     InvalidConfigField { index: usize, reason: &'static str },
+    /// A localized-titles entry is illegal (an empty locale key or an empty
+    /// value): such an entry cannot resolve through the locale fallback chain.
+    /// `at` names the declaration site ("menu" / "routes[i]").
+    InvalidTitles { at: String, reason: &'static str },
+    /// `ui = None` (pure-backend shape) but UI mount points are declared
+    /// (menu / routes): a component without UI has nothing to mount.
+    MountWithoutUi,
 }
 
 impl fmt::Display for ManifestError {
@@ -243,6 +270,13 @@ impl fmt::Display for ManifestError {
             ManifestError::InvalidConfigField { index, reason } => {
                 write!(f, "invalid declaration at config.fields[{index}]: {reason}")
             }
+            ManifestError::InvalidTitles { at, reason } => {
+                write!(f, "invalid titles entry at {at}: {reason}")
+            }
+            ManifestError::MountWithoutUi => write!(
+                f,
+                "ui is absent (pure-backend component) but menu/routes are declared: a component without UI has no mount points"
+            ),
         }
     }
 }
@@ -250,12 +284,12 @@ impl fmt::Display for ManifestError {
 impl std::error::Error for ManifestError {}
 
 impl ComponentManifest {
-    /// Semantic validation: the v1 rule set for namespace / version / min_shell_version /
-    /// files.
-    ///
-    /// Called by the shell at the install entry; component authors may self-check in
-    /// packaging scripts.
-    pub fn validate(&self) -> Result<(), ManifestError> {
+    /// Declaration-level semantic validation: the v1 rule set for namespace / version /
+    /// min_shell_version / localized titles / mount consistency / config — everything a
+    /// **pure declaration** (a dev `manifest.json`, `files` empty) must satisfy. The dev
+    /// load path and the creation flow validate at this level; the files list is a
+    /// package concept and is not their concern.
+    pub fn validate_declaration(&self) -> Result<(), ManifestError> {
         // id is the /comps/{id} static URL key and the install directory name, same rule as
         // namespace: non-empty + URL segment charset
         if self.id.is_empty() {
@@ -288,11 +322,21 @@ impl ComponentManifest {
                 field: "min_shell_version",
             });
         }
-        if self.files.is_empty() {
-            return Err(ManifestError::EmptyFiles);
+        // Localized titles (architecture.md "Localized titles"): every locale key and
+        // value must be non-empty — an empty entry would silently break the
+        // locale fallback chain instead of localizing it. An absent or empty map
+        // is the legal single-language form and needs no check.
+        if let Some(menu) = &self.menu {
+            validate_titles(&menu.titles, "menu")?;
         }
-        for entry in &self.files {
-            validate_relative_path(&entry.path)?;
+        for (index, route) in self.routes.iter().enumerate() {
+            validate_titles(&route.titles, &format!("routes[{index}]"))?;
+        }
+        // Mount-point consistency: ui=None (pure-backend shape) has no UI mount
+        // surface — menu and routes must both be empty (nothing to mount);
+        // launch=None (pure-frontend shape) carries no extra constraint
+        if self.ui.is_none() && (!self.routes.is_empty() || self.menu.is_some()) {
+            return Err(ManifestError::MountWithoutUi);
         }
         if let Some(config) = &self.config {
             for (index, field) in config.fields.iter().enumerate() {
@@ -323,6 +367,42 @@ impl ComponentManifest {
         }
         Ok(())
     }
+
+    /// Package-level semantic validation = [`Self::validate_declaration`] + the files
+    /// rules (non-empty list, per-entry relative-path safety). The gate for the install
+    /// path — a package without files has nothing to install, and a file escaping the
+    /// install directory is outside the contract.
+    pub fn validate(&self) -> Result<(), ManifestError> {
+        self.validate_declaration()?;
+        if self.files.is_empty() {
+            return Err(ManifestError::EmptyFiles);
+        }
+        for entry in &self.files {
+            validate_relative_path(&entry.path)?;
+        }
+        Ok(())
+    }
+}
+
+/// Localized-titles validation shared by the menu and route declarations: every
+/// locale key and every value must be a non-empty string. `at` names the
+/// declaration site in error messages ("menu" / "routes[i]").
+fn validate_titles(titles: &BTreeMap<String, String>, at: &str) -> Result<(), ManifestError> {
+    for (locale, value) in titles {
+        if locale.is_empty() {
+            return Err(ManifestError::InvalidTitles {
+                at: at.to_string(),
+                reason: "empty locale key",
+            });
+        }
+        if value.is_empty() {
+            return Err(ManifestError::InvalidTitles {
+                at: at.to_string(),
+                reason: "empty value",
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Relative path safety validation: rejects absolute paths and `..` escapes — files outside
