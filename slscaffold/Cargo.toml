@@ -1,0 +1,10 @@
+[package]
+name = "slscaffold"
+version = "0.1.0"
+edition = "2021"
+description = "superlive component project scaffolding: renders the standard component skeleton (server / web / build script) in three shapes from embedded templates"
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"
