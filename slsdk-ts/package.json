@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
+    "i18next": "^26.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "rxjs": "^7.0.0"
@@ -28,6 +29,7 @@
     "@rslib/core": "^0.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "i18next": "^26.0.0",
     "typescript": "^5.5.0",
     "vitest": "^3.0.0"
   }

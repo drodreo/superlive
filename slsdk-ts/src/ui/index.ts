@@ -64,6 +64,9 @@ export { formatDateTime } from './utils/datetime';
 // ===== CSS contract facility =====
 export { injectUiCss, removeUiCss, useUiCss } from './inject';
 
+// ===== Component i18n registration =====
+export { registerI18n, type ComponentI18nResources } from './i18n';
+
 // ===== Types =====
 export type {
   SelectOption,

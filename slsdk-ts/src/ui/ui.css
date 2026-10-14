@@ -31,6 +31,9 @@
   --sl-ui-color-primary: #10b981;      /* mint green */
   --sl-ui-color-secondary: #0ea5e9;    /* sky blue */
   --sl-ui-color-error: #ef4444;        /* coral red */
+  --sl-ui-color-primary-strong: #059669;   /* hover/solid deepen of primary */
+  --sl-ui-color-secondary-strong: #0284c7; /* hover/solid deepen of secondary */
+  --sl-ui-color-error-strong: #dc2626;     /* hover/solid deepen of error */
 
   /* Neutrals */
   --sl-ui-color-bg-primary: #fefce8;   /* warm white */
@@ -200,8 +203,8 @@
 }
 
 .sl-ui-btn--primary:hover:not(:disabled) {
-  background: #059669;
-  border-color: #059669;
+  background: var(--sl-ui-color-primary-strong, #059669);
+  border-color: var(--sl-ui-color-primary-strong, #059669);
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
 }
 
@@ -264,8 +267,8 @@
 }
 
 .sl-ui-btn--danger:hover:not(:disabled) {
-  background: #dc2626;
-  border-color: #dc2626;
+  background: var(--sl-ui-color-error-strong, #dc2626);
+  border-color: var(--sl-ui-color-error-strong, #dc2626);
   box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4);
 }
 
@@ -277,8 +280,8 @@
 }
 
 .sl-ui-btn--info:hover:not(:disabled) {
-  background: #0284c7;
-  border-color: #0284c7;
+  background: var(--sl-ui-color-secondary-strong, #0284c7);
+  border-color: var(--sl-ui-color-secondary-strong, #0284c7);
   box-shadow: 0 4px 10px rgba(14, 165, 233, 0.4);
 }
 
@@ -288,7 +291,7 @@
 }
 
 .sl-ui-btn--text-danger:hover:not(:disabled) {
-  color: #dc2626;
+  color: var(--sl-ui-color-error-strong, #dc2626);
   background: rgba(239, 68, 68, 0.08);
 }
 
