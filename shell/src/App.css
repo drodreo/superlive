@@ -1,14 +1,161 @@
 /* Shell app layout styles.
    Note P1_UI_NO_MARGIN_001: component roots such as ComponentManager /
    ComponentHost carry no outer margins of their own; all spacing is
-   maintained by this file (the page-level orchestration container). */
+   maintained by this file (the page-level orchestration container).
+
+   Theming: two full-app palettes (light default, dark) driven by CSS
+   variables on <html data-theme="...">; every surface (sidebar, activity
+   bar, content) switches together.
+
+   Glass language over one shared backdrop: the sidebar is emerging glass
+   (frost raised out of the backdrop — flush, lit hairline, no hover
+   shadow), while the workspace is a slightly floating glass slab (inset
+   from the window edges, rounded corners, soft diffuse shadow). Content
+   panels inside stay solid (--bg-panel) for readability. */
+
+/* ---------- Theme palettes ---------- */
+
+:root {
+  --bg-base: #dfe3ec;
+  --bg-panel: #ffffff;
+  --bg-inset: #f0f1f4;
+  --glow-1: rgba(125, 168, 255, 0.45);
+  --glow-2: rgba(196, 168, 250, 0.4);
+  --glow-3: rgba(140, 216, 224, 0.35);
+  --glass-sidebar: rgba(255, 255, 255, 0.35);
+  --glass-panel: rgba(255, 255, 255, 0.52);
+  --glass-tint: rgba(255, 255, 255, 0.22);
+  --glass-edge: rgba(255, 255, 255, 0.8);
+  --glass-edge-strong: rgba(255, 255, 255, 0.95);
+  --float-shadow: 0 4px 20px rgba(20, 30, 50, 0.14);
+  --menu-active-bg: rgba(59, 130, 246, 0.22);
+  --menu-active-text: #4b7ab8;
+  --text: #1f2328;
+  --text-dim: #57606a;
+  --text-faint: #8b949e;
+  --text-sidebar: #4b5563;
+  --text-brand: #1f2328;
+  --sidebar-hover: rgba(0, 0, 0, 0.06);
+  --border: #eef0f3;
+  --border-strong: #d0d4dc;
+  --table-head-bg: #fafbfc;
+  --accent: #3b82f6;
+  --info-bg: #eef4ff;
+  --info-border: #c7d8fa;
+  --info-text: #1f5fd0;
+  --ok-bg: #eaf7ee;
+  --ok-border: #b7e2c1;
+  --ok-text: #1a7f37;
+  --warn-bg: #fff8e6;
+  --warn-border: #e8c476;
+  --warn-text: #9a6700;
+  --err-bg: #fff5f5;
+  --err-border: #f0c4c8;
+  --err-text: #cf222e;
+  --backdrop: rgba(15, 20, 30, 0.45);
+}
+
+:root[data-theme='dark'] {
+  --bg-base: #0d0f14;
+  --bg-panel: #1f232b;
+  --bg-inset: #272c36;
+  --glow-1: rgba(56, 108, 220, 0.28);
+  --glow-2: rgba(120, 82, 220, 0.22);
+  --glow-3: rgba(38, 150, 160, 0.18);
+  --glass-sidebar: rgba(20, 23, 29, 0.55);
+  --glass-panel: rgba(28, 32, 40, 0.58);
+  --glass-tint: rgba(255, 255, 255, 0.04);
+  --glass-edge: rgba(255, 255, 255, 0.14);
+  --glass-edge-strong: rgba(255, 255, 255, 0.2);
+  --float-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  --menu-active-bg: rgba(76, 141, 255, 0.3);
+  --menu-active-text: #a5c1e0;
+  --text: #e4e7ec;
+  --text-dim: #9aa3af;
+  --text-faint: #727b87;
+  --text-sidebar: #b9c0cc;
+  --text-brand: #f4f6f9;
+  --sidebar-hover: rgba(255, 255, 255, 0.07);
+  --border: #2a2f39;
+  --border-strong: #3d4450;
+  --table-head-bg: #232833;
+  --accent: #4c8dff;
+  --info-bg: rgba(76, 141, 255, 0.16);
+  --info-border: rgba(76, 141, 255, 0.45);
+  --info-text: #8ab4ff;
+  --ok-bg: rgba(35, 134, 54, 0.18);
+  --ok-border: rgba(63, 185, 80, 0.45);
+  --ok-text: #3fb950;
+  --warn-bg: rgba(187, 128, 9, 0.2);
+  --warn-border: rgba(187, 128, 9, 0.5);
+  --warn-text: #d29922;
+  --err-bg: rgba(248, 81, 73, 0.15);
+  --err-border: rgba(248, 81, 73, 0.45);
+  --err-text: #f85149;
+  --backdrop: rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- Component theme bridge (@shell/sdk/ui tokens) ----------
+   The shell owns the --sl-ui-* namespace inside the app: html[data-theme]
+   (0,1,1) stably overrides the SDK's static :root defaults and its
+   prefers-color-scheme block (both :root, 0,1,0) regardless of injection
+   order — every SDK-facility surface follows the shell's manual theme;
+   the SDK's own defaults remain visible only in standalone component
+   development. Components' custom styles follow the same data-theme
+   attribute (their own [data-theme] rules); component-defined variables
+   outside --sl-ui-* are the component's own. */
+html[data-theme='light'],
+html[data-theme='dark'] {
+  --sl-ui-color-primary: var(--accent);
+  --sl-ui-color-secondary: var(--info-text);
+  --sl-ui-color-error: var(--err-text);
+  --sl-ui-color-bg-primary: var(--bg-app);
+  --sl-ui-color-bg-secondary: var(--bg-inset);
+  --sl-ui-color-border: var(--border-strong);
+  --sl-ui-color-text-primary: var(--text);
+  --sl-ui-color-text-secondary: var(--text-dim);
+  --sl-ui-color-text-muted: var(--text-faint);
+  --sl-ui-color-surface: var(--glass-panel);
+}
+
+/* Solid/hover deepenings and tier neutrals carry literal values (no shell
+   token equivalents) */
+html[data-theme='light'] {
+  --sl-ui-color-primary-strong: #2c6fd6;
+  --sl-ui-color-secondary-strong: #1a4fa8;
+  --sl-ui-color-error-strong: #a81c26;
+  --sl-ui-color-bg-tertiary: #e6e9f0;
+}
+
+html[data-theme='dark'] {
+  --sl-ui-color-primary-strong: #7aa7ff;
+  --sl-ui-color-secondary-strong: #a5c4ff;
+  --sl-ui-color-error-strong: #ff7a72;
+  --sl-ui-color-bg-tertiary: #2b313c;
+}
+
+/* Viewport reset: the UA stylesheet's default body margin (8px) would
+   offset the 100vh flex layout and paint a white ring + scrollbars
+   around the app. The app owns all scrolling (.content). */
+html,
+body {
+  margin: 0;
+  overflow: hidden;
+}
 
 .app {
   display: flex;
   height: 100vh;
   overflow: hidden;
   font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: #1f2328;
+  color: var(--text);
+  /* Shared backdrop: soft programmatic light blobs over a base tone —
+     both glass surfaces (sidebar / workspace) frost this same layer. */
+  background:
+    radial-gradient(640px 420px at 12% 18%, var(--glow-1), transparent 62%),
+    radial-gradient(760px 520px at 88% 84%, var(--glow-2), transparent 62%),
+    radial-gradient(560px 460px at 82% 12%, var(--glow-3), transparent 60%),
+    var(--bg-base);
 }
 
 /* ---------- Sidebar menu ---------- */
@@ -18,8 +165,19 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  background: #1c2333;
-  color: #d6dbe6;
+  /* Emerging glass: translucent frost over the shared backdrop, framed
+     by a small inset on all sides so its silhouette reads on every edge
+     (flush-to-window sides would swallow the protrusion); a lit hairline
+     outlines the raised surface, no hover shadow. The right margin
+     provides the sidebar↔workspace seam. */
+  margin: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--glass-sidebar);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--glass-edge);
+  color: var(--text-sidebar);
 }
 
 .brand {
@@ -27,7 +185,7 @@
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #fff;
+  color: var(--text-brand);
 }
 
 .menu {
@@ -35,6 +193,35 @@
   flex-direction: column;
   gap: 2px;
   padding: 0 8px;
+  /* Stretch past its entries so the foot block sinks to the sidebar's
+     bottom; long component lists scroll inside instead of leaking. */
+  flex: 1;
+  overflow-y: auto;
+  /* Scrollable without a visible bar — same treatment as .content */
+  scrollbar-width: none;
+}
+
+.menu::-webkit-scrollbar,
+.content::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Foot block pinned to the menu's bottom: the two fixed entries
+   (component management + settings) and the app version line. */
+.menu-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+}
+
+/* App version line (Cargo.toml package version) — dim foot note. */
+.menu-version {
+  padding: 2px 12px 10px;
+  color: var(--text-faint);
+  font-size: 12px;
 }
 
 .menu button {
@@ -54,12 +241,90 @@
 }
 
 .menu button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--sidebar-hover);
 }
 
 .menu button.active {
-  background: #3b82f6;
-  color: #fff;
+  /* Translucent selection: a tint over the glass, not a solid fill —
+     the frost keeps showing through; restrained emphasis: medium weight
+     (500) + muted blue text, one step short of fully neutral */
+  background: var(--menu-active-bg);
+  color: var(--menu-active-text);
+  font-weight: 500;
+}
+
+/* ---------- Workspace (activity bar + content area) ---------- */
+
+.workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* Floating glass slab: inset from the window edges so the raw backdrop
+     shows around it; rounded corners + a soft diffuse shadow give the
+     slight hover, the frost is blur over the same backdrop. No left
+     margin — the sidebar's right margin provides the (visually tuned)
+     seam between the two glass pieces. */
+  margin: 10px 10px 10px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--glass-panel);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid var(--glass-edge-strong);
+  box-shadow: var(--float-shadow);
+}
+
+/* Activity bar — the workspace's top strip, owned by the shell
+   framework (not by components). Left/right symmetric zones: current
+   module title / live date-time / theme toggle. */
+.activity-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  background: var(--glass-tint);
+  border-bottom: 1px solid var(--glass-edge);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.activity-left {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-center {
+  flex: none;
+  padding: 0 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-right {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.activity-right button {
+  padding: 4px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.activity-right button:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
 }
 
 /* ---------- Content area ---------- */
@@ -69,15 +334,13 @@
   min-width: 0;
   overflow: auto;
   padding: 20px;
-  background: #f5f6f8;
+  /* transparent — the workspace slab's frost is the surface */
+  /* Scrollable without a visible bar (webkitgtk): the bar's chrome would sit
+     inside the content frame and fight the composed page surfaces */
+  scrollbar-width: none;
 }
 
 /* ---------- Component management page ---------- */
-
-.manager h2 {
-  margin: 0 0 12px;
-  font-size: 18px;
-}
 
 .install-bar {
   display: flex;
@@ -88,7 +351,7 @@
 .install-bar input {
   flex: 1;
   padding: 8px 10px;
-  border: 1px solid #d0d4dc;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
 }
@@ -97,7 +360,7 @@
   padding: 8px 18px;
   border: 0;
   border-radius: 6px;
-  background: #3b82f6;
+  background: var(--accent);
   color: #fff;
   font-size: 13px;
   cursor: pointer;
@@ -112,8 +375,8 @@
   margin-bottom: 12px;
   padding: 8px 12px;
   border-radius: 6px;
-  background: #eef4ff;
-  border: 1px solid #c7d8fa;
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
   font-size: 13px;
   word-break: break-all;
 }
@@ -121,7 +384,7 @@
 .comp-table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
+  background: var(--bg-panel);
   border-radius: 8px;
   overflow: hidden;
   font-size: 13px;
@@ -131,25 +394,25 @@
 .comp-table td {
   padding: 10px 12px;
   text-align: left;
-  border-bottom: 1px solid #eef0f3;
+  border-bottom: 1px solid var(--border);
 }
 
 .comp-table th {
-  background: #fafbfc;
-  color: #57606a;
+  background: var(--table-head-bg);
+  color: var(--text-dim);
   font-weight: 600;
 }
 
 .comp-table .empty {
   text-align: center;
-  color: #8b949e;
+  color: var(--text-faint);
 }
 
 .comp-table button {
   padding: 4px 12px;
-  border: 1px solid #d0d4dc;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-panel);
   font-size: 12px;
   cursor: pointer;
 }
@@ -159,13 +422,103 @@
 }
 
 .comp-table button.danger {
-  color: #cf222e;
-  border-color: #f0b1b7;
+  color: var(--err-text);
+  border-color: var(--err-border);
 }
 
 .comp-table button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ---------- Settings page (the sidebar bottom entry's target) ---------- */
+
+.settings h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.settings-card {
+  max-width: 560px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-card-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.settings-card-head button {
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-hint {
+  margin: 10px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.settings-card + .settings-card {
+  margin-top: 12px;
+}
+
+/* Language options render native names; the active option gets the same
+   translucent selection language as the menu. */
+.locale-switch {
+  display: flex;
+  gap: 6px;
+}
+
+.locale-switch button {
+  padding: 5px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.locale-switch button.on {
+  border-color: var(--accent);
+  background: var(--menu-active-bg);
+  color: var(--menu-active-text);
+}
+
+/* ---------- Welcome page (neutral landing, nothing selected) ---------- */
+
+.welcome {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.welcome h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.welcome p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 14px;
 }
 
 /* ---------- Component container (module / iframe tiers) ---------- */
@@ -176,20 +529,20 @@
   height: 100%;
   border: 0;
   border-radius: 8px;
-  background: #fff;
+  background: var(--bg-panel);
 }
 
 .comp-loading {
-  color: #8b949e;
+  color: var(--text-faint);
   font-size: 13px;
 }
 
 .comp-error {
   padding: 12px 16px;
   border-radius: 8px;
-  background: #fff5f5;
-  border: 1px solid #f0c4c8;
-  color: #cf222e;
+  background: var(--err-bg);
+  border: 1px solid var(--err-border);
+  color: var(--err-text);
   font-size: 13px;
 }
 
@@ -206,41 +559,41 @@
 }
 
 .badge-needs-config {
-  background: #fff8e6;
-  border: 1px solid #e8c476;
-  color: #9a6700;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
 }
 
 .badge-ready {
-  background: #eef4ff;
-  border: 1px solid #c7d8fa;
-  color: #1f5fd0;
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  color: var(--info-text);
 }
 
 .badge-running {
-  background: #eaf7ee;
-  border: 1px solid #b7e2c1;
-  color: #1a7f37;
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-border);
+  color: var(--ok-text);
 }
 
 .badge-stopped {
-  background: #f2f3f5;
-  border: 1px solid #d8dce2;
-  color: #57606a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
 }
 
 /* Message-bar error/success variants (save failure red / state-routed save success green) */
 
 .message.error {
-  background: #fff5f5;
-  border-color: #f0c4c8;
-  color: #cf222e;
+  background: var(--err-bg);
+  border-color: var(--err-border);
+  color: var(--err-text);
 }
 
 .message.success {
-  background: #eaf7ee;
-  border-color: #b7e2c1;
-  color: #1a7f37;
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+  color: var(--ok-text);
 }
 
 /* Generic secondary button (the modal footer's "Later" etc.) and primary button (table buttons keep the existing rules above) */
@@ -248,9 +601,9 @@
 .modal-footer button,
 .config-actions button {
   padding: 6px 16px;
-  border: 1px solid #d0d4dc;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-panel);
   font-size: 13px;
   cursor: pointer;
 }
@@ -264,7 +617,7 @@
 .modal-footer button.primary,
 .config-actions button.primary {
   border: 0;
-  background: #3b82f6;
+  background: var(--accent);
   color: #fff;
 }
 
@@ -273,7 +626,7 @@
 button.link {
   border: 0;
   background: transparent;
-  color: #3b82f6;
+  color: var(--accent);
   cursor: pointer;
   font-size: 13px;
   padding: 0;
@@ -294,7 +647,7 @@ button.link {
 }
 
 .config-group {
-  background: #fff;
+  background: var(--bg-panel);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 12px;
@@ -303,7 +656,7 @@ button.link {
 .config-group h3 {
   margin: 0 0 12px;
   font-size: 14px;
-  color: #57606a;
+  color: var(--text-dim);
 }
 
 .config-field {
@@ -315,19 +668,19 @@ button.link {
   display: block;
   font-size: 13px;
   margin-bottom: 4px;
-  color: #1f2328;
+  color: var(--text);
 }
 
 .config-field .req {
-  color: #cf222e;
+  color: var(--err-text);
   margin-right: 4px;
 }
 
 .restart-tag {
   margin-left: 8px;
   font-size: 11px;
-  color: #9a6700;
-  background: #fff8e6;
+  color: var(--warn-text);
+  background: var(--warn-bg);
   border-radius: 4px;
   padding: 1px 6px;
 }
@@ -340,15 +693,15 @@ button.link {
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;
-  border: 1px solid #d0d4dc;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--bg-panel);
 }
 
 .config-field.has-error input,
 .config-field.has-error select {
-  border-color: #cf222e;
+  border-color: var(--err-text);
 }
 
 .checkbox-line {
@@ -370,13 +723,13 @@ button.link {
 }
 
 .field-desc {
-  color: #8b949e;
+  color: var(--text-faint);
   font-size: 12px;
   margin-top: 4px;
 }
 
 .field-error {
-  color: #cf222e;
+  color: var(--err-text);
   font-size: 12px;
   margin-top: 4px;
 }
@@ -393,28 +746,50 @@ button.link {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(15, 20, 30, 0.45);
+  background: var(--backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .modal {
+  display: flex;
+  flex-direction: column;
   width: 440px;
   max-width: calc(100vw - 48px);
-  background: #fff;
+  max-height: calc(100vh - 48px);
+  background: var(--bg-panel);
   border-radius: 10px;
-  padding: 18px 20px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 18px 20px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme='dark'] .modal {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* The creation form's card holds a fixed height from the moment it opens:
+   validation errors appearing, rows being added, or the advanced section
+   expanding never resize the card — the body region absorbs everything and
+   scrolls when it overflows */
+.modal.modal-form {
+  height: min(620px, calc(100vh - 48px));
 }
 
 .modal-title {
+  flex-shrink: 0;
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 12px;
 }
 
 .modal-body {
+  /* The shell of the modal (title + actions) stays fixed; only this region
+     scrolls — min-height: 0 lets the flex child actually shrink below its
+     content */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   font-size: 13px;
 }
 
@@ -423,10 +798,15 @@ button.link {
 }
 
 .modal-footer {
+  flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 16px;
+  /* Divider between the form area and the actions: 12px above the hairline,
+     12px below it, the card's bottom padding (16px) closes the block */
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 /* Launch options (slot) */
@@ -447,4 +827,468 @@ button.link {
   gap: 6px;
   margin-bottom: 6px;
   font-size: 13px;
+}
+
+/* ---------- App self-update dialog ---------- */
+
+.update-notes {
+  max-height: 200px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  background: var(--bg-inset);
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.update-progress {
+  height: 8px;
+  background: var(--bg-inset);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.update-progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+/* ---------- Component creation flow (phase 3b: create entry + dialog + post-create guide) ---------- */
+
+/* The create entry sits beside the install channel's primary button: the
+   secondary language of the modal footer buttons (border compensated by 1px
+   padding to keep the bar's buttons aligned). */
+.install-bar button.secondary {
+  padding: 7px 17px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.install-bar button.secondary:hover {
+  border-color: var(--accent);
+}
+
+/* dev-source marker on the component name cell (vs installed packages) */
+.comp-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge-dev {
+  background: var(--menu-active-bg);
+  border: 1px solid transparent;
+  color: var(--menu-active-text);
+  flex: none;
+}
+
+.comp-project-dir {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+  word-break: break-all;
+}
+
+/* Create dialog internals: a vertical field stack; fields reuse the config
+   page's .config-field system (gap replaces the field's own bottom margin). */
+.dlg-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dlg-fields .config-field {
+  margin-bottom: 0;
+}
+
+/* Localized-title rows (create dialog): a locale selector + title input per
+   row with a trailing remove button. Each row is a two-line grid — a 40px
+   control line plus a reserved error line under the input (fixed height, so
+   revealing an error never shifts the layout). Control spacing rides on the
+   rows container (8px) and the grid gutters (8px horizontal / 4px vertical),
+   not on the controls themselves. */
+.dlg-titles-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The add-locale action sits tight under the rows — a quiet follow-up, not a
+   peer of the input rows. Same form language as the modal-footer buttons
+   (the .secondary class alone carries no rule; without this it rendered as
+   the bare UA button, a different height than its peers) */
+.dlg-titles-rows + .secondary {
+  margin-top: 6px;
+  padding: 6px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dlg-title-row {
+  display: grid;
+  grid-template-columns: 1fr 32px;
+  gap: 4px 8px;
+  align-items: center;
+}
+
+/* Composite locale+title control: one border, the locale picker embedded as
+   the input's prefix (separated by a hairline), errors paint the whole
+   composite border */
+.dlg-title-combo {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.dlg-title-combo:focus-within {
+  border-color: var(--accent);
+}
+
+.dlg-title-combo.has-error {
+  border-color: var(--err-text);
+}
+
+/* Scoped with .dlg-fields so the specificity beats the uniform-control
+   rules (.dlg-fields .config-field input/select set a full 8px radius —
+   which would nibble little rounded gaps at the composite's middle seam);
+   the seam sides stay square, the outer sides follow the container */
+.dlg-fields .dlg-title-combo .dlg-title-locale {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 64px;
+  padding: 0 18px 0 10px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 8px 0 0 8px;
+  background: transparent
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")
+    no-repeat right 6px center;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dlg-fields .dlg-title-combo input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0 8px 8px 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.dlg-fields .dlg-title-combo input:focus,
+.dlg-fields .dlg-title-combo .dlg-title-locale:focus {
+  outline: none;
+}
+
+/* Composite path control (project location): typable input with an embedded
+   trailing browse button inside one border — the trailing counterpart of the
+   locale rows' leading prefix */
+.dlg-path-combo {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-panel);
+}
+
+.dlg-path-combo:focus-within {
+  border-color: var(--accent);
+}
+
+.dlg-path-combo.has-error {
+  border-color: var(--err-text);
+}
+
+.dlg-fields .dlg-path-combo input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px 0 0 8px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.dlg-path-browse {
+  width: 36px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 8px 8px 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dlg-path-browse:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.dlg-fields .dlg-path-combo input:focus,
+.dlg-path-browse:focus {
+  outline: none;
+}
+
+/* The dialog's uniform control form: 40px tall, 8px radius, the shared
+   border/background variables (overrides the config-field defaults inside
+   the dialog; source order puts these after the generic rules) */
+.dlg-fields .config-field input[type='text'],
+.dlg-fields .config-field input[type='password'],
+.dlg-fields .config-field input[type='number'],
+.dlg-fields .config-field input[type='datetime-local'],
+.dlg-fields .config-field select {
+  height: 40px;
+  border-radius: 8px;
+}
+
+/* Focus form for the plain dialog inputs: the border itself highlights (the
+   composite controls' form language) instead of the UA focus ring — the ring
+   paints outside the element and gets clipped sideways by the scrolling
+   body's overflow context; a border highlight lives inside the box and can
+   never clip */
+.dlg-fields .config-field input:focus,
+.dlg-fields .config-field select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* Square 32×32 hot zone centered in the 40px row; quiet by default, a light
+   grey wash on hover, no border */
+.dlg-title-remove {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  justify-self: end;
+}
+
+.dlg-title-remove:hover:not(:disabled) {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.dlg-title-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Error line under the row's input: exists only while an error is visible
+   (no reserved height — an empty field the user just left does not grow the
+   block) */
+.dlg-title-row-error {
+  grid-column: 1;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-faint);
+}
+
+.dlg-title-row-error .error {
+  color: var(--err-text);
+}
+
+.dlg-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.dlg-hint.error {
+  color: var(--err-text);
+}
+
+.dlg-advanced summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.dlg-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dlg-advanced-body .config-field {
+  margin-bottom: 0;
+}
+
+/* Post-create guide */
+.done-section {
+  margin-top: 12px;
+}
+
+.done-label {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.done-path {
+  padding: 8px 10px;
+  background: var(--bg-inset);
+  border-radius: 6px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.done-steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.done-steps li {
+  margin-bottom: 6px;
+}
+
+.done-steps code {
+  word-break: break-all;
+}
+
+.done-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* Creation dialog first step: the import / fresh choice cards. Same panel
+   form language as the dialog controls (8px radius, the shared border), a
+   quiet hover that lifts the border to the accent — the cards are buttons,
+   the whole surface is the hot zone */
+.dlg-choice-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  height: 100%;
+  align-content: center;
+}
+
+.dlg-choice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dlg-choice-card:hover {
+  border-color: var(--accent);
+}
+
+.dlg-choice-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dlg-choice-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* Import flow: the inspect/confirm action row under the path control.
+   Buttons mirror the modal-footer's button form (they live inside the
+   scrolling body, outside the footer's selector scope) */
+.dlg-import-actions button {
+  padding: 6px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dlg-import-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dlg-import-actions button.primary {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+}
+
+.dlg-import-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Import flow: the upgrade confirmation list — one row per fix, the kind
+   label carrying the weight, the command's detail text verbatim beneath */
+.dlg-import-upgrades {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dlg-import-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dlg-import-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dlg-import-list li {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dlg-import-kind {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dlg-import-detail {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  word-break: break-word;
 }

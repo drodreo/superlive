@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { firstValueFrom } from 'rxjs';
+import { useTranslation } from 'react-i18next';
 import {
   fetchConfigI18n,
   getComponentConfig,
@@ -28,8 +29,12 @@ import {
 } from './api';
 import { navigate } from './router';
 import { LaunchOptionsDialog } from './LaunchOptionsDialog';
+import type { ShellKey } from './i18n';
 
 type FormValues = Record<string, string>;
+
+/** i18n message payload: key + params, translated at render (retranslates on locale switch). */
+type I18nMessage = { key: ShellKey; params?: Record<string, string | number> };
 
 /** Parses the Err content of a failed write_component_config: the contract form is a JSON string {"errors":{key: reason}}. */
 function parseWriteErrors(e: unknown): Record<string, string> | null {
@@ -44,19 +49,20 @@ function parseWriteErrors(e: unknown): Record<string, string> | null {
 }
 
 export function ComponentConfigPage({ id }: { id: string }) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<ComponentConfig | null>(null);
   const [i18nMap, setI18nMap] = useState<Record<string, string> | null>(null);
   // The form's editing state is uniformly string-shaped (checkboxes use
   // 'true'/'false'); values are converted to the declared types on submit
   const [form, setForm] = useState<FormValues>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [globalError, setGlobalError] = useState<string | null>(null);
+  const [globalError, setGlobalError] = useState<I18nMessage | null>(null);
   const [busy, setBusy] = useState(false);
   // Set of visible sensitive fields (password form + show/hide toggle)
   const [sensitiveVisible, setSensitiveVisible] = useState<Set<string>>(new Set());
   // Save-result message bar (wording routed by the component's lifecycle
   // state, see save())
-  const [saveInfo, setSaveInfo] = useState<string | null>(null);
+  const [saveInfo, setSaveInfo] = useState<I18nMessage | null>(null);
   const [showLaunchOptions, setShowLaunchOptions] = useState(false);
 
   useEffect(() => {
@@ -84,7 +90,8 @@ export function ComponentConfigPage({ id }: { id: string }) {
         // back to the raw text
         void fetchConfigI18n(id, cfg.i18n).then(setI18nMap);
       },
-      error: (e) => setGlobalError(`读取组件配置声明失败: ${e}`),
+      error: (e) =>
+        setGlobalError({ key: 'cfg.loadFailed', params: { error: String(e) } }),
     });
     return () => sub.unsubscribe();
   }, [id]);
@@ -126,7 +133,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
       for (const f of config.fields) {
         const raw = form[f.key] ?? '';
         if (f.type === 'number' && raw !== '' && Number.isNaN(Number(raw))) {
-          localErrors[f.key] = '须为数字';
+          localErrors[f.key] = t('cfg.nan');
         }
       }
       if (Object.keys(localErrors).length > 0) {
@@ -159,7 +166,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
         // within the restart window, so instead of distinguishing running via
         // get_component_state, the message speaks in restart semantics
         // directly.
-        setSaveInfo('已保存。涉及需重启的配置项，组件已由壳自动重启。');
+        setSaveInfo({ key: 'cfg.savedRestart' });
         return;
       }
       // No automatic restart triggered → route by the component's lifecycle
@@ -171,17 +178,17 @@ export function ComponentConfigPage({ id }: { id: string }) {
         // A state-read failure does not affect the save's success: a neutral
         // message, not entering the gate flow (avoiding disturbing a
         // stopped-state user)
-        setSaveInfo('已保存');
+        setSaveInfo({ key: 'cfg.saved' });
         return;
       }
       if (state === 'running') {
         // Management entry: no restart_required entries changed → the
         // component's standard endpoint hot-reloads immediately
-        setSaveInfo('已保存，配置已热重载生效。');
+        setSaveInfo({ key: 'cfg.savedHot' });
       } else if (state === 'stopped') {
         // Management entry: no automatic start; the user starts manually from
         // the management page
-        setSaveInfo('已保存，组件未运行。');
+        setSaveInfo({ key: 'cfg.savedStopped' });
       } else {
         // needs-config / ready (the gate flow) → the launch options prompt (an
         // extensible slot, see LaunchOptionsDialog); timing differences in the
@@ -192,7 +199,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
     } catch (e) {
       const fieldErrors = parseWriteErrors(e);
       if (fieldErrors) setErrors(fieldErrors);
-      else setGlobalError(`保存配置失败: ${String(e)}`);
+      else setGlobalError({ key: 'cfg.saveFailed', params: { error: String(e) } });
     } finally {
       setBusy(false);
     }
@@ -207,7 +214,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
       navigate('/components');
     } catch (e) {
       setShowLaunchOptions(false);
-      setGlobalError(`启动失败: ${e}`);
+      setGlobalError({ key: 'mgr.startFailed', params: { error: String(e) } });
     }
   };
 
@@ -232,16 +239,16 @@ export function ComponentConfigPage({ id }: { id: string }) {
       <div className={`config-field${err ? ' has-error' : ''}`} key={f.key}>
         <label htmlFor={`cfg-${f.key}`}>
           {f.required && (
-            <span className="req" title="必填">
+            <span className="req" title={t('cfg.required')}>
               *
             </span>
           )}
           {tr(f.label)}
-          {f.restart_required && <span className="restart-tag">重启生效</span>}
+          {f.restart_required && <span className="restart-tag">{t('cfg.restartTag')}</span>}
         </label>
         {f.type === 'select' ? (
           <select id={`cfg-${f.key}`} value={raw} onChange={(e) => setValue(f.key, e.target.value)}>
-            <option value="">（未设置）</option>
+            <option value="">{t('cfg.unset')}</option>
             {(f.options ?? []).map((o) => (
               <option key={o} value={o}>
                 {o}
@@ -256,7 +263,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
               checked={raw === 'true'}
               onChange={(e) => setValue(f.key, String(e.target.checked))}
             />
-            启用
+            {t('cfg.enabled')}
           </label>
         ) : (
           <div className="sensitive-wrap">
@@ -266,14 +273,14 @@ export function ComponentConfigPage({ id }: { id: string }) {
               value={raw}
               placeholder={
                 f.default !== undefined && f.default !== null
-                  ? `默认：${String(f.default)}`
-                  : '未设置'
+                  ? t('cfg.default', { value: String(f.default) })
+                  : t('cfg.notSet')
               }
               onChange={(e) => setValue(f.key, e.target.value)}
             />
             {f.sensitive && (
               <button type="button" className="link" onClick={() => toggleVisible(f.key)}>
-                {visible ? '隐藏' : '显示'}
+                {visible ? t('cfg.hide') : t('cfg.show')}
               </button>
             )}
           </div>
@@ -287,14 +294,14 @@ export function ComponentConfigPage({ id }: { id: string }) {
   if (globalError && !config) {
     return (
       <section className="config-page">
-        <div className="comp-error">{globalError}</div>
+        <div className="comp-error">{t(globalError.key, globalError.params)}</div>
       </section>
     );
   }
   if (!config) {
     return (
       <section className="config-page">
-        <div className="comp-loading">加载配置声明中…</div>
+        <div className="comp-loading">{t('cfg.loading')}</div>
       </section>
     );
   }
@@ -303,16 +310,16 @@ export function ComponentConfigPage({ id }: { id: string }) {
     <section className="config-page">
       <div className="page-head">
         <button type="button" className="link" onClick={() => navigate('/components')}>
-          ← 返回组件管理
+          {t('cfg.back')}
         </button>
-        <h2>配置：{id}</h2>
+        <h2>{t('cfg.title', { id })}</h2>
       </div>
 
-      {globalError && <div className="message error">{globalError}</div>}
-      {saveInfo && <div className="message success">{saveInfo}</div>}
-      {config.fields.length === 0 && (
-        <div className="message">该组件没有可配置项（零配置组件，可直接启动）。</div>
+      {globalError && (
+        <div className="message error">{t(globalError.key, globalError.params)}</div>
       )}
+      {saveInfo && <div className="message success">{t(saveInfo.key, saveInfo.params)}</div>}
+      {config.fields.length === 0 && <div className="message">{t('cfg.noFields')}</div>}
 
       {grouped.map((g) => (
         <section className="config-group" key={g.name ?? '__ungrouped__'}>
@@ -324,7 +331,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
       {config.fields.length > 0 && (
         <div className="config-actions">
           <button type="button" className="primary" disabled={busy} onClick={() => void save()}>
-            保存配置
+            {t('cfg.save')}
           </button>
         </div>
       )}
