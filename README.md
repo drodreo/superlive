@@ -30,6 +30,16 @@ You assemble your own platform: install the components that match how you work, 
 - **Configuration as UI** — the manifest declares, the shell renders; upgrades diff the new required fields against your existing config and only ask for what is missing.
 - **Small footprint** — a Rust/Tauri shell using the system webview; no bundled browser.
 
+## Installing
+
+Grab the package for your platform from the GitHub Releases page — `.deb` (Linux), `.dmg` (macOS), `.msi` (Windows).
+
+**macOS first launch**: the app is not notarized, so Gatekeeper blocks the very first launch. Allow it via **System Settings → Privacy & Security → Open Anyway**, or strip the quarantine flag from the command line before launching:
+
+    xattr -cr /Applications/superlive.app
+
+Updates through the built-in updater never re-trigger the gate — the updater swaps the app bundle directly, without the download-time quarantine attribute.
+
 ## Building your own component
 
 The easiest way in: the component manager in the app has a **create** entry. A dialog collects the id, namespace, display name, which planes you want (backend process / frontend UI — the combination picks the shape: full-stack, frontend-only, or backend-only), and a project location; the shell scaffolds the complete project and registers it as a development component — the body stays in your project directory, rebuild plus stop/start picks up new artifacts (reload is the upgrade path), and uninstalling removes only the registration.
