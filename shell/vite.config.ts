@@ -271,7 +271,7 @@ function esbuildDirectBundle(): Plugin {
     apply: 'build',
     async closeBundle() {
       const esbuild = await import('esbuild');
-      const base = {
+      const base: import('esbuild').BuildOptions = {
         bundle: true,
         format: 'esm',
         outdir: resolve(root, 'dist'),
@@ -286,8 +286,27 @@ function esbuildDirectBundle(): Plugin {
       await esbuild.build({ ...base, entryPoints: { 'vendor/rxjs': 'rxjs' } });
       // Shared i18n singletons: i18next (zero-dependency) bundles whole;
       // react-i18next keeps react + i18next external (bare imports → the
-      // import map locks them to the singletons)
-      await esbuild.build({ ...base, entryPoints: { 'vendor/i18next': 'i18next' } });
+      // import map locks them to the singletons). The banner on the i18next
+      // artifact installs a require() shim: react-i18next's bundled CJS
+      // transitive deps (use-sync-external-store) call require("react") at
+      // runtime, and esbuild leaves that to a global require. i18next
+      // evaluates before the react-i18next body, so the shim is in place
+      // before first use; react is external here only for the banner's
+      // import (the import map routes it to the same singleton).
+      await esbuild.build({
+        ...base,
+        entryPoints: { 'vendor/i18next': 'i18next' },
+        external: ['react'],
+        banner: {
+          js: [
+            'import * as __require_shim_react from "react";',
+            'window.require = (id) => {',
+            '  if (id === "react") return __require_shim_react;',
+            `  throw new Error('require("' + id + '") is not an import-mapped external');`,
+            '};',
+          ].join('\n'),
+        },
+      });
       await esbuild.build({
         ...base,
         entryPoints: { 'vendor/react-i18next': 'react-i18next' },
