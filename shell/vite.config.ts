@@ -43,10 +43,12 @@ const vendorEntries = {
 const SLSDK_UI_ENTRY = resolve(root, '../slsdk-ts/src/ui/index.ts');
 // Whitelisted bare imports kept in the ui artifact (aligned with slsdk-ts
 // rslib externals: whitelisted shared libraries are never inlined, preventing
-// duplicate instances). The current ui module graph actually only imports
-// react/react-dom; rxjs is aligned with the configuration preemptively so a
-// future hooks-driven rxjs import is not inlined into a second instance.
-const SLSDK_UI_EXTERNAL = ['react', 'react-dom', 'rxjs'];
+// duplicate instances). The current ui module graph imports react/react-dom;
+// i18next comes from the ui entry's registerI18n (the component i18n
+// contract: components register namespaces into the host's shared instance);
+// rxjs is aligned with the configuration preemptively so a future
+// hooks-driven rxjs import is not inlined into a second instance.
+const SLSDK_UI_EXTERNAL = ['react', 'react-dom', 'rxjs', 'i18next'];
 
 // Dev middleware: the import map's URLs (/vendor/*.js) have no build
 // artifacts in dev mode, so vite's transformRequest compiles the shim sources
@@ -68,6 +70,10 @@ const SLSDK_UI_EXTERNAL = ['react', 'react-dom', 'rxjs'];
 const devVendorEntries: Record<string, string> = {
   ...vendorEntries,
   rxjs: resolve(root, 'src/vendor/rxjs.ts'),
+  // Shared i18n singletons (the component i18n contract): shell, sdk-ui
+  // and module-tier components all resolve the same i18next instance
+  i18next: resolve(root, 'src/vendor/i18next.ts'),
+  'react-i18next': resolve(root, 'src/vendor/react-i18next.ts'),
 };
 
 // The @shell/sdk/ui dev artifact: esbuild in-memory direct bundling
@@ -168,6 +174,13 @@ const WHITELIST_IMPORTS = [
   'react-dom',
   'react-dom/client',
   'rxjs',
+  // Shared i18n singletons (the component i18n contract): the shell's own
+  // i18n init, the sdk-ui registerI18n helper and module-tier components'
+  // useTranslation all resolve the same instances via the import map —
+  // locale switches propagate everywhere, and components register their
+  // namespaces into the host instance (no per-component copies)
+  'i18next',
+  'react-i18next',
 ];
 
 // Direct-build specs for the react-family shims. For the singleton design see
@@ -271,6 +284,15 @@ function esbuildDirectBundle(): Plugin {
         logLevel: 'silent',
       };
       await esbuild.build({ ...base, entryPoints: { 'vendor/rxjs': 'rxjs' } });
+      // Shared i18n singletons: i18next (zero-dependency) bundles whole;
+      // react-i18next keeps react + i18next external (bare imports → the
+      // import map locks them to the singletons)
+      await esbuild.build({ ...base, entryPoints: { 'vendor/i18next': 'i18next' } });
+      await esbuild.build({
+        ...base,
+        entryPoints: { 'vendor/react-i18next': 'react-i18next' },
+        external: ['react', 'i18next'],
+      });
       await esbuild.build({
         ...base,
         entryPoints: { 'vendor/slsdk-ui': SLSDK_UI_ENTRY },
