@@ -13,6 +13,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-updater = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
@@ -37,6 +39,11 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # Plane B contract SDK: the shell references it as the adjudicator
 # (manifest validation / registration protocol), same-repo path
 slsdk-rs = { path = "../../slsdk-rs" }
+# Built-in creation flow: standard three-shape project scaffolding,
+# same-repo path
+slscaffold = { path = "../../slscaffold" }
+# Dev manifest files fingerprinting (create flow); also covers the tests
+sha2 = "0.10"
 # Configuration-plane shell-side required-field comparison: reads the
 # component's config.toml as a table (upgrade drift detection, rule 3).
 # Version aligned with slsdk-rs's toml so Cargo converges to one instance and
@@ -51,7 +58,5 @@ nix = { version = "0.29", features = ["signal"] }
 [dev-dependencies]
 # Temp directories for the installer/lifecycle tests
 tempfile = "3"
-# The installer tests compute files fingerprints (same as slsdk-rs)
-sha2 = "0.10"
 # Test-side router.oneshot (auth/gateway/server tests)
 tower = "0.5"

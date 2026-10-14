@@ -18,15 +18,17 @@
 use crate::config::HEALTH_TIMEOUT;
 use crate::config_plane::{self, ComponentMeta, ComponentState};
 use crate::lifecycle;
+use crate::registry;
 use crate::AppState;
 use slsdk_rs::ComponentManifest;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Scan all manifests in registry/, recompute states and restore-start per
+/// Scan all registry records, recompute states and restore-start per
 /// policy (serial: a low-frequency path, keeping log ordering clear).
 pub async fn start_all(state: &AppState) {
-    let manifests = match crate::registry::load_all_manifests(&state.layout).await {
-        Ok(manifests) => manifests,
+    let entries = match registry::load_all_entries(&state.layout).await {
+        Ok(entries) => entries,
         Err(source) => {
             log::error!(
                 "failed to scan the component registry directory ({}): {source}",
@@ -35,31 +37,41 @@ pub async fn start_all(state: &AppState) {
             return;
         }
     };
-    if manifests.is_empty() {
+    if entries.is_empty() {
         log::info!("no installed components");
         return;
     }
-    for manifest in manifests {
-        let config_path = state.layout.component_config_file(&manifest.id);
+    for entry in entries {
+        let id = entry.manifest.id.clone();
+        // Dev entries: refresh the declaration + envelope snapshot from the
+        // live project (start/reload semantics). A failure skips the entry
+        // with a warning instead of dragging down the rest of the scan.
+        let entry = match registry::refresh_dev_entry(&state.layout, &entry).await {
+            Ok(entry) => entry,
+            Err(e) => {
+                log::warn!("skipping component {id} at restore-start: {e}");
+                continue;
+            }
+        };
+        let config_path = registry::config_path_for(&state.layout, &entry);
         // Recompute the state: out-of-shell config.toml changes / orphan meta
         // both defer to the scene
-        let computed = match config_plane::compute_state(&manifest, &config_path).await {
+        let computed = match config_plane::compute_state(&entry.manifest, &config_path).await {
             Ok(state) => state,
             Err(e) => {
                 log::error!(
-                    "failed to determine the config state for component {}, skipping: {e}",
-                    manifest.id
+                    "failed to determine the config state for component {id}, skipping: {e}"
                 );
                 continue;
             }
         };
-        let launch_policy = config_plane::load_meta(&state.layout, &manifest.id)
+        let launch_policy = config_plane::load_meta(&state.layout, &id)
             .await
             .map(|m| m.launch_policy)
             .unwrap_or_else(config_plane::default_launch_policy);
         if let Err(e) = config_plane::save_meta(
             &state.layout,
-            &manifest.id,
+            &id,
             &ComponentMeta {
                 state: computed,
                 launch_policy,
@@ -67,32 +79,35 @@ pub async fn start_all(state: &AppState) {
         )
         .await
         {
-            log::warn!(
-                "failed to persist the state for component {} (continuing startup): {e}",
-                manifest.id
-            );
+            log::warn!("failed to persist the state for component {id} (continuing startup): {e}");
         }
         if computed == ComponentState::NeedsConfig {
             log::info!(
-                "component {} is in needs-config (missing required config), blocked at the startup gate",
-                manifest.id
+                "component {id} is in needs-config (missing required config), blocked at the startup gate"
             );
             continue;
         }
         if launch_policy != config_plane::LaunchPolicy::Auto {
             log::info!(
-                "component {} has a manual start policy, waiting for an explicit user start",
-                manifest.id
+                "component {id} has a manual start policy, waiting for an explicit user start"
             );
+            continue;
+        }
+        // Dev entries: a not-yet-built backend artifact is a normal rest
+        // state — skip with a warning instead of dragging the scan (the
+        // user starts it explicitly after building)
+        if let Err(e) = registry::ensure_launch_artifact(&entry) {
+            log::warn!("skipping component {id} at restore-start: {e}");
             continue;
         }
         log::info!(
             "restarting component {} (ns={} v={})",
-            manifest.id,
-            manifest.namespace,
-            manifest.version
+            id,
+            entry.manifest.namespace,
+            entry.manifest.version
         );
-        launch(state, Arc::new(manifest)).await;
+        let workdir = registry::workdir_for(&state.layout, &entry);
+        launch(state, Arc::new(entry.manifest), workdir).await;
     }
 }
 
@@ -103,6 +118,7 @@ pub async fn start_all(state: &AppState) {
 pub(crate) async fn launch_with_transition(
     state: &AppState,
     manifest: Arc<ComponentManifest>,
+    workdir: PathBuf,
 ) -> Result<(), lifecycle::LifecycleError> {
     let id = manifest.id.clone();
     let policy = config_plane::load_meta(&state.layout, &id)
@@ -121,8 +137,14 @@ pub(crate) async fn launch_with_transition(
     {
         log::warn!("failed to persist the starting state for component {id} (continuing): {e}");
     }
-    let result =
-        lifecycle::spawn_component(&state.layout, &state.registry, manifest, HEALTH_TIMEOUT).await;
+    let result = lifecycle::spawn_component(
+        &state.layout,
+        &state.registry,
+        manifest,
+        workdir,
+        HEALTH_TIMEOUT,
+    )
+    .await;
     match &result {
         Ok(()) => {
             if let Err(e) = config_plane::save_meta(
@@ -159,8 +181,8 @@ pub(crate) async fn launch_with_transition(
     result
 }
 
-async fn launch(state: &AppState, manifest: Arc<ComponentManifest>) {
-    if let Err(e) = launch_with_transition(state, manifest).await {
+async fn launch(state: &AppState, manifest: Arc<ComponentManifest>, workdir: PathBuf) {
+    if let Err(e) = launch_with_transition(state, manifest, workdir).await {
         log::error!("component spawn failed, skipping: {e}");
     }
 }

@@ -113,9 +113,11 @@ async fn cors_middleware(req: Request, next: Next) -> Response {
 }
 
 /// `GET /comps/{id}/{rel}`: component UI static files.
-/// URL space maps to `components/{id}/ui/{rel}` — only the ui/ subdirectory
-/// inside the package is exposed; the rest of the install directory
-/// (binaries, resources) never enters the URL space.
+/// Data source by registry record: an installed entry maps to
+/// `components/{id}/ui/{rel}`; a dev entry maps to `{project_dir}/web/dist/{rel}`
+/// (the built output of the project — absent until the first build, which
+/// surfaces as 404). Only the static root is exposed; binaries/resources and
+/// the rest of the project tree never enter the URL space.
 async fn comps_static(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(rest): axum::extract::Path<String>,
@@ -125,10 +127,10 @@ async fn comps_static(
     let Some((id, rel)) = rest.split_once('/') else {
         return not_found();
     };
-    let base = state.layout.component_dir(id).join("ui");
+    let base = static_base(&state, id).await;
     let path = base.join(rel);
     // Traversal guard: after canonicalization the path must still land
-    // inside that component's ui/ directory
+    // inside that component's static root
     let (canonical, canonical_base) = match (
         tokio::fs::canonicalize(&path).await,
         tokio::fs::canonicalize(&base).await,
@@ -142,6 +144,22 @@ async fn comps_static(
     match tokio::fs::read(&canonical).await {
         Ok(bytes) => ([(header::CONTENT_TYPE, static_mime(&canonical))], bytes).into_response(),
         Err(_) => not_found(),
+    }
+}
+
+/// The static root for one component's `/comps/{id}` space: dev entries
+/// serve the project's `web/dist` (reload-is-upgrade: the read follows the
+/// on-disk envelope, so a rebuilt project is picked up without
+/// re-registration); installed entries — and any fallback (no record /
+/// corrupt record / envelope without a project dir) — serve the install
+/// directory's `ui/` subdirectory.
+async fn static_base(state: &AppState, id: &str) -> std::path::PathBuf {
+    match crate::registry::load_entry(&state.layout, id).await {
+        Ok(Some(entry)) if entry.source == crate::registry::ComponentSource::Dev => entry
+            .project_dir
+            .map(|dir| dir.join("web").join("dist"))
+            .unwrap_or_else(|| state.layout.component_dir(id).join("ui")),
+        _ => state.layout.component_dir(id).join("ui"),
     }
 }
 
@@ -407,5 +425,79 @@ mod tests {
                 .unwrap(),
             "tauri://localhost"
         );
+    }
+
+    // ---------- /comps dev data source ----------
+
+    /// Hand-writes one dev registration envelope (the minimal shape bypassing the creation flow).
+    fn write_dev_entry(state: &AppState, id: &str, ns: &str, project: &std::path::Path) {
+        let entry = crate::registry::RegistryEntry {
+            source: crate::registry::ComponentSource::Dev,
+            project_dir: Some(project.to_path_buf()),
+            manifest: serde_json::from_str(&format!(
+                r#"{{
+                "id": "{id}",
+                "version": "0.1.0",
+                "min_shell_version": "0.1.0",
+                "namespace": "{ns}",
+                "display_name": "{id}",
+                "ui": {{ "ui_type": "module", "entry": "entry.js" }},
+                "menu": null,
+                "routes": [],
+                "launch": null,
+                "files": [ {{ "path": "README.md", "sha256": "aa" }} ]
+            }}"#
+            ))
+            .unwrap(),
+            registered_at: None,
+        };
+        std::fs::create_dir_all(state.layout.registry_dir()).unwrap();
+        std::fs::write(
+            state.layout.registry_file(id),
+            serde_json::to_string_pretty(&entry).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn dev_entry_serves_project_dist() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = Arc::new(AppState::new(dir.path().join("data")).unwrap());
+        let project = dir.path().join("proj");
+        std::fs::create_dir_all(project.join("web/dist")).unwrap();
+        std::fs::write(project.join("web/dist/entry.js"), b"export default 1;").unwrap();
+        // The rest of the project tree (sources/manifest) never enters the URL space
+        std::fs::write(project.join("secret.txt"), b"private").unwrap();
+        write_dev_entry(&state, "devapp", "devns", &project);
+
+        let router = build_router(Arc::clone(&state));
+
+        // Build artifacts are reachable
+        let req = Request::builder()
+            .uri("/comps/devapp/entry.js")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(body_bytes(res).await, b"export default 1;");
+
+        // Files outside the static root are unreachable (only web/dist is exposed)
+        let req = Request::builder()
+            .uri("/comps/devapp/secret.txt")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        // Not built yet (web/dist absent) → 404 (a normal state)
+        let empty_project = dir.path().join("empty");
+        std::fs::create_dir_all(&empty_project).unwrap();
+        write_dev_entry(&state, "novbuild", "novns", &empty_project);
+        let req = Request::builder()
+            .uri("/comps/novbuild/entry.js")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 }
