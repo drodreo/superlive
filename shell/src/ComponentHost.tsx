@@ -12,7 +12,9 @@
 
 import React, { lazy, useMemo, Suspense } from 'react';
 import type { ComponentType } from 'react';
+import { useTranslation } from 'react-i18next';
 import { componentAssetUrl, type ComponentInfo } from './api';
+import i18n from './i18n';
 
 /** The minimal props contract a module-tier component receives: the shell route path passed through verbatim, consumed at the component's own discretion. */
 export interface ComponentModuleProps {
@@ -33,14 +35,17 @@ class ComponentErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error) {
-    console.error('[ComponentHost] 组件渲染失败:', error);
+    console.error('[ComponentHost] component render failed:', error);
   }
 
   render() {
     if (this.state.error) {
+      // Direct instance lookup: a class boundary can't use the hook — the
+      // parent re-renders on locale change (useTranslation), which re-renders
+      // this boundary and retranslates
       return (
         <div className="comp-error">
-          组件加载或渲染失败：{this.state.error.message}
+          {i18n.t('host.renderFailed', { error: this.state.error.message })}
         </div>
       );
     }
@@ -49,6 +54,7 @@ class ComponentErrorBoundary extends React.Component<
 }
 
 export function ComponentHost({ info, route }: { info: ComponentInfo; route: string }) {
+  const { t } = useTranslation();
   // module tier: dynamically imports the component ESM at runtime.
   // @vite-ignore declares that the URL is only determined at runtime, so
   // vite performs no build-time analysis (preserving native dynamic import
@@ -61,16 +67,30 @@ export function ComponentHost({ info, route }: { info: ComponentInfo; route: str
   const LazyModule = useMemo(
     () =>
       lazy(async () => {
+        // ui=None (pure-backend shape) has no entry: the factory can only be
+        // reached through the null guard below, which renders nothing — the
+        // entry check is a defensive backstop, not a reachable path
+        const entry = info.ui?.entry;
+        if (!entry) {
+          throw new Error(`Component has no UI declaration (${info.id})`);
+        }
         const mod = (await import(
-          /* @vite-ignore */ componentAssetUrl(info.id, info.ui.entry)
+          /* @vite-ignore */ componentAssetUrl(info.id, entry)
         )) as { default: ModuleComponent };
         if (!mod?.default) {
-          throw new Error(`组件入口缺少默认导出（${info.id}/${info.ui.entry}）`);
+          throw new Error(`Component entry is missing a default export (${info.id}/${entry})`);
         }
         return { default: mod.default };
       }),
-    [info.id, info.ui.entry],
+    [info.id, info.ui],
   );
+
+  // ui=None (pure-backend shape): no UI mount point — render nothing. Such
+  // components carry no menu/routes by validate contract, so this branch is
+  // only reachable by manual URL navigation.
+  if (!info.ui) {
+    return null;
+  }
 
   // iframe tier: the static entry mounted directly. src is the full address
   // (the shell webview origin is cross-origin to 39876).
@@ -86,7 +106,7 @@ export function ComponentHost({ info, route }: { info: ComponentInfo; route: str
 
   return (
     <ComponentErrorBoundary>
-      <Suspense fallback={<div className="comp-loading">组件加载中…</div>}>
+      <Suspense fallback={<div className="comp-loading">{t('host.loading')}</div>}>
         <LazyModule route={route} />
       </Suspense>
     </ComponentErrorBoundary>

@@ -9,8 +9,10 @@
 
 import { useState } from 'react';
 import { firstValueFrom } from 'rxjs';
+import { useTranslation } from 'react-i18next';
 import { setLaunchPolicy, type LaunchPolicy } from './api';
 import { Modal } from './Modal';
+import type { ShellKey } from './i18n';
 
 export function LaunchOptionsDialog({
   id,
@@ -23,10 +25,14 @@ export function LaunchOptionsDialog({
   /** The user declines: no options saved; the component stays in its current state. */
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   // --- Slot 1: launch policy (component-level, persisted in the shell-side registry, not in the component manifest) ---
   const [policy, setPolicy] = useState<LaunchPolicy>('auto');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{
+    key: ShellKey;
+    params?: Record<string, string | number>;
+  } | null>(null);
 
   // Confirm = run each slot option's command call in order (currently only
   // the launch policy)
@@ -37,7 +43,7 @@ export function LaunchOptionsDialog({
       await firstValueFrom(setLaunchPolicy(id, policy));
       onDone();
     } catch (e) {
-      setError(`保存启动策略失败: ${e}`);
+      setError({ key: 'launch.policyFailed', params: { error: String(e) } });
     } finally {
       setBusy(false);
     }
@@ -45,21 +51,21 @@ export function LaunchOptionsDialog({
 
   return (
     <Modal
-      title="启动选项"
+      title={t('launch.title')}
       footer={
         <>
           <button type="button" disabled={busy} onClick={onCancel}>
-            稍后再说
+            {t('launch.later')}
           </button>
           <button type="button" className="primary" disabled={busy} onClick={() => void confirm()}>
-            保存并启动
+            {t('launch.saveAndStart')}
           </button>
         </>
       }
     >
-      {error && <div className="message error">{error}</div>}
+      {error && <div className="message error">{t(error.key, error.params)}</div>}
       <div className="launch-option">
-        <div className="launch-option-title">启动策略</div>
+        <div className="launch-option-title">{t('launch.policy')}</div>
         <label>
           <input
             type="radio"
@@ -67,7 +73,7 @@ export function LaunchOptionsDialog({
             checked={policy === 'auto'}
             onChange={() => setPolicy('auto')}
           />
-          自动：每次打开 superlive 时自动拉起该组件
+          {t('launch.auto')}
         </label>
         <label>
           <input
@@ -76,7 +82,7 @@ export function LaunchOptionsDialog({
             checked={policy === 'manual'}
             onChange={() => setPolicy('manual')}
           />
-          手动：在组件管理页手动启动
+          {t('launch.manual')}
         </label>
       </div>
       {/* Future launch-options slots: append option sections here (independent state, submitted in order via confirm) */}

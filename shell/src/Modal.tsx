@@ -7,14 +7,17 @@ export function Modal({
   title,
   children,
   footer,
+  className,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** Optional extra classes for the card (e.g. a fixed-height form modal) */
+  className?: string;
 }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="modal">
+      <div className={`modal${className ? ` ${className}` : ''}`}>
         <div className="modal-title">{title}</div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}

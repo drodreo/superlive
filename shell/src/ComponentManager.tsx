@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { firstValueFrom, type Observable } from 'rxjs';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { ask } from '@tauri-apps/plugin-dialog';
+import { useTranslation } from 'react-i18next';
 import {
   getComponentState,
   installComponent,
@@ -28,26 +30,43 @@ import {
 import { navigate } from './router';
 import { Modal } from './Modal';
 import { LaunchOptionsDialog } from './LaunchOptionsDialog';
+import { CreateComponentDialog } from './CreateComponentDialog';
+import { componentMenuTitle } from './i18n';
+import type { CreateComponentResult } from './api';
+import type { ShellKey } from './i18n';
 
-const STATE_LABEL: Record<ComponentState, string> = {
-  'needs-config': '待配置',
-  ready: '就绪',
-  running: '运行中',
-  stopped: '已停止',
-};
+/** Message-bar payload: key + params (not a finished string) so an already-shown message retranslates on locale switch. */
+type I18nMessage = { key: ShellKey; params?: Record<string, string | number> };
+
+/**
+ * Localized display title of a component (architecture.md "Localized titles"):
+ * components with a menu render through the menuTitle chain (the namespace
+ * resource the shell injected from the manifest's titles); menu-less
+ * components keep the assembly-time derived display_name.
+ */
+function displayTitleOf(c: ComponentInfo): string {
+  // ?? and || may not be mixed unparenthesized — the ?? chain resolves first,
+  // then the || id fallback
+  return ((c.menu ? componentMenuTitle(c.namespace) : null) ?? c.display_name) || c.id;
+}
 
 export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
+  const { t } = useTranslation();
   const [components, setComponents] = useState<ComponentInfo[]>([]);
   // Four-state map (merged per component via get_component_state); missing
   // entries fall back to rendering with the running boolean
   const [states, setStates] = useState<Record<string, ComponentState>>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<I18nMessage | null>(null);
   const [busy, setBusy] = useState(false);
   const [zipPath, setZipPath] = useState('');
   // Target component id for the post-install "Start now" prompt / the
   // launch options dialog
   const [installPromptId, setInstallPromptId] = useState<string | null>(null);
   const [launchDialogId, setLaunchDialogId] = useState<string | null>(null);
+  // Built-in creation flow: the create dialog's open state + the succeeded
+  // result (the post-create guide modal's content)
+  const [createOpen, setCreateOpen] = useState(false);
+  const [created, setCreated] = useState<CreateComponentResult | null>(null);
   // ref mirror of busy: lets the drag listener (a stable closure mounted once) gate too
   const busyRef = useRef(false);
 
@@ -71,7 +90,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
           setStates(next);
         });
       },
-      error: (e) => setMessage(`读取组件列表失败: ${e}`),
+      error: (e) => setMessage({ key: 'mgr.listFailed', params: { error: String(e) } }),
     });
     return () => sub.unsubscribe();
   }, []);
@@ -85,7 +104,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
       if (event.payload.type !== 'drop') return;
       const zip = event.payload.paths.find((p) => p.endsWith('.zip'));
       if (!zip) return;
-      void run(installComponent(zip), `已安装（拖拽）: ${zip}`).then((info) => {
+      void run(installComponent(zip), 'mgr.installedDrag', { path: zip }).then((info) => {
         onChanged?.();
         // Install success → lifecycle wiring step one: show the "Start now" prompt
         if (info) setInstallPromptId(info.id);
@@ -101,17 +120,21 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
 
   /** Unified action executor: busy gating (a ref, safe to reuse from non-React callbacks) + feedback + returns the result value. */
   const run = useCallback(
-    async <T,>(action$: Observable<T>, success: string): Promise<T | undefined> => {
+    async <T,>(
+      action$: Observable<T>,
+      successKey: ShellKey,
+      successParams?: Record<string, string | number>,
+    ): Promise<T | undefined> => {
       if (busyRef.current) return undefined;
       busyRef.current = true;
       setBusy(true);
       setMessage(null);
       try {
         const value = await firstValueFrom(action$);
-        setMessage(success);
+        setMessage({ key: successKey, params: successParams });
         return value;
       } catch (e) {
-        setMessage(`操作失败: ${e}`);
+        setMessage({ key: 'mgr.actionFailed', params: { error: String(e) } });
         return undefined;
       } finally {
         busyRef.current = false;
@@ -130,7 +153,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   const installByPath = () => {
     const path = zipPath.trim();
     if (!path) return;
-    void run(installComponent(path), `已安装: ${path}`).then((info) => {
+    void run(installComponent(path), 'mgr.installed', { path }).then((info) => {
       setZipPath('');
       afterChange();
       if (info) setInstallPromptId(info.id);
@@ -155,7 +178,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
         setLaunchDialogId(id);
       }
     } catch (e) {
-      setMessage(`读取组件状态失败: ${e}`);
+      setMessage({ key: 'mgr.stateReadFailed', params: { error: String(e) } });
     }
   };
 
@@ -164,47 +187,48 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
     setLaunchDialogId(null);
     try {
       await firstValueFrom(startComponent(id));
-      setMessage(`已启动: ${id}`);
+      setMessage({ key: 'mgr.started', params: { id } });
     } catch (e) {
-      setMessage(`启动失败: ${e}`);
+      setMessage({ key: 'mgr.startFailed', params: { error: String(e) } });
     }
     afterChange();
   };
 
   return (
     <section className="manager">
-      <h2>组件管理</h2>
-
       <div className="install-bar">
         <input
           type="text"
-          placeholder="组件包 zip 的磁盘路径（也可把 zip 拖进窗口安装）"
+          placeholder={t('mgr.installPlaceholder')}
           value={zipPath}
           onChange={(e) => setZipPath(e.target.value)}
         />
         <button type="button" disabled={busy || !zipPath.trim()} onClick={installByPath}>
-          安装
+          {t('mgr.install')}
+        </button>
+        <button type="button" className="secondary" onClick={() => setCreateOpen(true)}>
+          {t('mgr.create')}
         </button>
       </div>
 
-      {message && <div className="message">{message}</div>}
+      {message && <div className="message">{t(message.key, message.params)}</div>}
 
       <table className="comp-table">
         <thead>
           <tr>
-            <th>组件</th>
-            <th>版本</th>
-            <th>命名空间</th>
-            <th>UI</th>
-            <th>状态</th>
-            <th>操作</th>
+            <th>{t('table.component')}</th>
+            <th>{t('table.version')}</th>
+            <th>{t('table.namespace')}</th>
+            <th>{t('table.ui')}</th>
+            <th>{t('table.state')}</th>
+            <th>{t('table.actions')}</th>
           </tr>
         </thead>
         <tbody>
           {components.length === 0 && (
             <tr>
               <td colSpan={6} className="empty">
-                尚未安装任何组件
+                {t('mgr.empty')}
               </td>
             </tr>
           )}
@@ -212,12 +236,23 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
             const state = stateOf(c);
             return (
               <tr key={c.id}>
-                <td>{c.display_name || c.id}</td>
+                <td>
+                  <div className="comp-name">
+                    {displayTitleOf(c)}
+                    {/* dev = created in place, body stays in the project dir (vs installed packages) */}
+                    {c.source === 'dev' && <span className="badge badge-dev">dev</span>}
+                  </div>
+                  {c.project_dir && (
+                    <div className="comp-project-dir" title={c.project_dir}>
+                      {c.project_dir}
+                    </div>
+                  )}
+                </td>
                 <td>{c.version}</td>
                 <td>{c.namespace}</td>
-                <td>{c.ui.ui_type}</td>
+                <td>{c.ui?.ui_type}</td>
                 <td>
-                  <span className={`badge badge-${state}`}>{STATE_LABEL[state]}</span>
+                  <span className={`badge badge-${state}`}>{t(`state.${state}`)}</span>
                 </td>
                 <td>
                   {state === 'needs-config' ? (
@@ -227,7 +262,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                       disabled={busy}
                       onClick={() => navigate(`/config/${c.id}`)}
                     >
-                      去配置
+                      {t('mgr.goConfig')}
                     </button>
                   ) : (
                     <>
@@ -237,17 +272,19 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                         disabled={busy}
                         onClick={() => navigate(`/config/${c.id}`)}
                       >
-                        配置
+                        {t('mgr.configure')}
                       </button>{' '}
                       {state === 'running' ? (
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            void run(stopComponent(c.id), `已请求停止: ${c.id}`).then(afterChange)
+                            void run(stopComponent(c.id), 'mgr.stopRequested', { id: c.id }).then(
+                              afterChange,
+                            )
                           }
                         >
-                          停止
+                          {t('mgr.stop')}
                         </button>
                       ) : (
                         // ready / stopped: manual start
@@ -255,10 +292,12 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            void run(startComponent(c.id), `已启动: ${c.id}`).then(afterChange)
+                            void run(startComponent(c.id), 'mgr.started', { id: c.id }).then(
+                              afterChange,
+                            )
                           }
                         >
-                          启动
+                          {t('mgr.start')}
                         </button>
                       )}
                     </>
@@ -267,12 +306,22 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                     type="button"
                     className="danger"
                     disabled={busy}
-                    onClick={() => {
-                      if (!window.confirm(`卸载组件 ${c.id}？（将停止进程并删除全部数据）`)) return;
-                      void run(uninstallComponent(c.id), `已卸载: ${c.id}`).then(afterChange);
+                    onClick={async () => {
+                      const confirmKey =
+                        c.source === 'dev' ? 'mgr.uninstallConfirmDev' : 'mgr.uninstallConfirm';
+                      // window.confirm is not reliable in the tauri webview
+                      // (it shows a GTK dialog but returns immediately without
+                      // blocking — the uninstall used to run before the user
+                      // answered, and Cancel could not stop it). The dialog
+                      // plugin's ask() is a proper awaited promise.
+                      const ok = await ask(t(confirmKey, { id: c.id }));
+                      if (!ok) return;
+                      void run(uninstallComponent(c.id), 'mgr.uninstalled', { id: c.id }).then(
+                        afterChange,
+                      );
                     }}
                   >
-                    卸载
+                    {t('mgr.uninstall')}
                   </button>
                 </td>
               </tr>
@@ -284,11 +333,11 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
       {/* Install complete → "Start now" prompt (lifecycle wiring step one) */}
       {installPromptId && (
         <Modal
-          title="组件已安装"
+          title={t('mgr.installedTitle')}
           footer={
             <>
               <button type="button" disabled={busy} onClick={() => setInstallPromptId(null)}>
-                稍后
+                {t('mgr.later')}
               </button>
               <button
                 type="button"
@@ -296,15 +345,18 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                 disabled={busy}
                 onClick={() => void beginLaunchFlow(installPromptId)}
               >
-                立即启动
+                {t('mgr.startNow')}
               </button>
             </>
           }
         >
           <p>
-            组件「
-            {components.find((c) => c.id === installPromptId)?.display_name ?? installPromptId}
-            」安装完成。是否立即启动？存在未完成必填配置的组件会先进入配置页。
+            {t('mgr.installedPrompt', {
+              // Fallback surface: display_name is the assembly-time product of
+              // the titles chain (zh → en → first row) — contract-compliant
+              name:
+                components.find((c) => c.id === installPromptId)?.display_name ?? installPromptId,
+            })}
           </p>
         </Modal>
       )}
@@ -316,6 +368,48 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
           onDone={() => void launchWithOptionsDone(launchDialogId)}
           onCancel={() => setLaunchDialogId(null)}
         />
+      )}
+
+      {/* Built-in creation flow: the create dialog; on success it swaps to the guide modal */}
+      {createOpen && (
+        <CreateComponentDialog
+          onCreated={(result) => {
+            setCreateOpen(false);
+            setCreated(result);
+            afterChange();
+          }}
+          onCancel={() => setCreateOpen(false)}
+        />
+      )}
+
+      {/* Post-create guide: project location + the scaffold's next steps (the
+          backend/frontend commands are already shape-trimmed by the scaffold) */}
+      {created && (
+        <Modal
+          title={t('done.title')}
+          footer={
+            <button type="button" className="primary" onClick={() => setCreated(null)}>
+              {t('done.close')}
+            </button>
+          }
+        >
+          <p>{t('done.intro', { name: created.component.display_name || created.component.id })}</p>
+          <div className="done-section">
+            <div className="done-label">{t('done.projectDir')}</div>
+            <div className="done-path">{created.project_dir}</div>
+          </div>
+          <div className="done-section">
+            <div className="done-label">{t('done.nextSteps')}</div>
+            <ol className="done-steps">
+              {created.next_steps.map((step) => (
+                <li key={step}>
+                  <code>{step}</code>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <p className="done-note">{t('done.locationNote')}</p>
+        </Modal>
       )}
     </section>
   );

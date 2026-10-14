@@ -26,12 +26,19 @@ export interface UiDeclaration {
 export interface MenuDeclaration {
   title: string;
   icon_path: string | null;
+  /** Localized titles (locale → title); omitted on the wire when empty = a single-language entry. */
+  titles?: Record<string, string>;
 }
 
 export interface RouteDeclaration {
   path: string;
   title: string;
+  /** Localized titles (locale → title), same wire form as MenuDeclaration.titles. */
+  titles?: Record<string, string>;
 }
+
+/** Where a registered component's body lives (disk envelope source field). */
+export type ComponentSource = 'installed' | 'dev';
 
 export interface ComponentInfo {
   id: string;
@@ -39,9 +46,14 @@ export interface ComponentInfo {
   namespace: string;
   display_name: string;
   running: boolean;
-  ui: UiDeclaration;
+  /** `null` = pure-backend shape: no UI mount surface (no menu/routes either). */
+  ui: UiDeclaration | null;
   menu: MenuDeclaration | null;
   routes: RouteDeclaration[];
+  /** installed = deployed into the install directory; dev = stays in the project directory (reload is the upgrade path). */
+  source: ComponentSource;
+  /** The project directory for dev entries; null for installed. */
+  project_dir: string | null;
 }
 
 // ---------- Shell-level token: a singleton fetched once at startup ----------
@@ -73,6 +85,93 @@ export const installComponent = (zipPath: string): Observable<ComponentInfo> =>
 /** Uninstall a component (stop the process first, then delete data). */
 export const uninstallComponent = (id: string): Observable<void> =>
   invoke$<void>('uninstall_component', { id });
+
+// ---------- Component creation (the built-in creation flow's command; the dialog lands in phase 3b) ----------
+
+/** Component shape (the create dialog's three options). */
+export type ComponentShape = 'frontend-backend' | 'frontend' | 'backend';
+
+/** How the SDK is consumed: registry = crates.io/npm versions; local = path dependencies pointing at a superlive checkout. */
+export type SdkMode = 'registry' | 'local';
+
+/** One localized-title row of the create dialog (the Rust DisplayTitleInput mirror). */
+export interface DisplayTitleInput {
+  locale: string;
+  value: string;
+}
+
+export interface CreateComponentArgs {
+  id: string;
+  /** Localized display titles (locale rows; the single-language display_name is derived at assembly: zh → en → first row). */
+  display_titles: DisplayTitleInput[];
+  namespace: string;
+  shape: ComponentShape;
+  /** Project location (the dialog's directory choice); the target must not exist, or be an empty directory. */
+  target_dir: string;
+  /** Fixed dev port (written into the vite dev proxy and the README recipe). */
+  dev_port: number;
+  sdk_mode: SdkMode;
+  /** Path of the superlive checkout; required when sdk_mode = local. */
+  sdk_path?: string | null;
+}
+
+export interface CreateComponentResult {
+  component: ComponentInfo;
+  project_dir: string;
+  /** Next-steps hints from the scaffolding (the content of the post-create guide modal). */
+  next_steps: string[];
+}
+
+/**
+ * Create a dev component: scaffold the project, assemble the dev manifest
+ * and register it. On failure the command rejects with an Err whose content
+ * is the JSON `{"kind": "invalid_argument"|"conflict"|"internal", "message":
+ * "..."}` — the dialog branches on kind (form errors vs world-state conflicts
+ * vs runtime faults).
+ */
+export const createComponent = (args: CreateComponentArgs): Observable<CreateComponentResult> =>
+  invoke$<CreateComponentResult>('create_component', { args });
+
+// ---------- Component import (architecture.md "Creation flow": importing an existing project) ----------
+
+/** The kind of one conservative gap-filling correction (the Rust UpgradeKind mirror). */
+export type UpgradeKind =
+  | 'derive_titles'
+  | 'refresh_version'
+  | 'fill_min_shell_version'
+  | 'add_build_script'
+  | 'add_readme';
+
+/** One upgrade-list entry: the correction kind plus the precise English detail (rendered verbatim). */
+export interface UpgradeItem {
+  kind: UpgradeKind;
+  detail: string;
+}
+
+/**
+ * Import outcome, tagged by `status`: `registered` = the same payload shape
+ * as the creation flow's result (the guide modal consumes it unchanged);
+ * `upgrade_required` = the confirmation list — a normal flow, not an error
+ * (the dialog re-invokes with apply_upgrades after the user confirms).
+ */
+export type ImportOutcome =
+  | {
+      status: 'registered';
+      component: ComponentInfo;
+      project_dir: string;
+      next_steps: string[];
+    }
+  | { status: 'upgrade_required'; items: UpgradeItem[] };
+
+/**
+ * Import an existing project directory as a dev component. Phase 1 inspects
+ * without touching the disk; with apply_upgrades the corrections are applied
+ * and the project registers, without it the upgrade list comes back for
+ * confirmation. Unfixable findings reject with the creation flow's JSON
+ * `{"kind": "invalid_argument" | "conflict" | "internal", "message"}` envelope.
+ */
+export const importComponent = (dir: string, applyUpgrades: boolean): Observable<ImportOutcome> =>
+  invoke$<ImportOutcome>('import_component', { dir, applyUpgrades });
 
 /** Start a component backend. */
 export const startComponent = (id: string): Observable<void> =>
