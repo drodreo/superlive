@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bundles: deb
+          - os: macos-latest
+            bundles: app,dmg
+          - os: windows-latest
+            bundles: msi
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: shell/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: shell/src-tauri
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2.12.0
+
+      - name: Install tauri system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install frontend deps
+        run: |
+          cd shell
+          pnpm install --frozen-lockfile
+
+      - name: Build
+        run: |
+          cd shell
+          cargo tauri build --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: superlive-${{ runner.os }}
+          path: |
+            shell/src-tauri/target/release/bundle/deb/*.deb
+            shell/src-tauri/target/release/bundle/dmg/*.dmg
+            shell/src-tauri/target/release/bundle/macos/*.app.tar.gz
+            shell/src-tauri/target/release/bundle/msi/*.msi
+            shell/src-tauri/target/release/bundle/**/*.sig
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            shell/src-tauri/target/release/bundle/deb/*.deb
+            shell/src-tauri/target/release/bundle/dmg/*.dmg
+            shell/src-tauri/target/release/bundle/msi/*.msi
+
+  # The updater endpoint points at latest.json on the release; tauri only
+  # produces the bundles and .sig files, so the manifest is assembled here
+  # from the three platform builds. The update carriers are deb (Linux),
+  # .app.tar.gz (macOS — the dmg is never signed and ships only as the
+  # manual-install download), and msi (Windows).
+  updater-manifest:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble latest.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DEB=$(ls artifacts/superlive-Linux/deb/*.deb)
+          APP_TARBALL=$(ls artifacts/superlive-macOS/macos/*.app.tar.gz)
+          MSI=$(ls artifacts/superlive-Windows/msi/*.msi)
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg deb_url "$BASE_URL/$(basename "$DEB")" \
+            --arg deb_sig "$(tr -d '\n' < "$DEB.sig")" \
+            --arg app_url "$BASE_URL/$(basename "$APP_TARBALL")" \
+            --arg app_sig "$(tr -d '\n' < "$APP_TARBALL.sig")" \
+            --arg msi_url "$BASE_URL/$(basename "$MSI")" \
+            --arg msi_sig "$(tr -d '\n' < "$MSI.sig")" \
+            '{
+              version: $version,
+              notes: "",
+              pub_date: $pub_date,
+              platforms: {
+                "linux-x86_64": { signature: $deb_sig, url: $deb_url },
+                "darwin-aarch64": { signature: $app_sig, url: $app_url },
+                "windows-x86_64": { signature: $msi_sig, url: $msi_url }
+              }
+            }' > latest.json
+          cat latest.json
+
+      - name: Attach updater manifest to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: latest.json

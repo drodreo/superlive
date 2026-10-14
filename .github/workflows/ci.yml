@@ -23,6 +23,10 @@ jobs:
         run: cargo fmt --check --manifest-path slsdk-rs/Cargo.toml
       - name: slsdk-rs test
         run: cargo test --manifest-path slsdk-rs/Cargo.toml
+      - name: slscaffold fmt
+        run: cargo fmt --check --manifest-path slscaffold/Cargo.toml
+      - name: slscaffold test
+        run: cargo test --manifest-path slscaffold/Cargo.toml
       - name: shell fmt
         run: cargo fmt --check --manifest-path shell/src-tauri/Cargo.toml
       - name: shell test
