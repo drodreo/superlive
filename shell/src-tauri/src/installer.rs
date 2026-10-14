@@ -124,7 +124,7 @@ pub async fn install(
 
 /// Parse a "major.minor.patch" three-segment version (missing segments
 /// count as 0; returns None on parse failure).
-fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
+pub(crate) fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
     let mut parts = s.split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next().unwrap_or("0").parse().ok()?;
@@ -139,7 +139,7 @@ fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
 /// (shell >= min to install).
 /// Invalid version strings are always treated as unsatisfied (slsdk validate
 /// blocks well-formed ones; this is a backstop against evasion).
-fn shell_version_satisfied(min_shell_version: &str) -> bool {
+pub(crate) fn shell_version_satisfied(min_shell_version: &str) -> bool {
     match (
         parse_semver(min_shell_version),
         parse_semver(env!("CARGO_PKG_VERSION")),
@@ -192,12 +192,15 @@ async fn install_inner(
 
     // Namespace conflicts are judged by on-disk registration (the shell may
     // not have started an installed component yet)
-    let installed = registry::load_all_manifests(layout)
+    let installed: Vec<ComponentManifest> = registry::load_all_entries(layout)
         .await
         .map_err(|source| InstallError::Io {
             path: layout.registry_dir().display().to_string(),
             source,
-        })?;
+        })?
+        .into_iter()
+        .map(|entry| entry.manifest)
+        .collect();
     if installed
         .iter()
         .any(|m| m.namespace == manifest.namespace && m.id != manifest.id)
@@ -568,11 +571,13 @@ mod tests {
         }
 
         // Landing check two: manifest registered in the shell data directory
-        // (not inside the install directory — S5)
+        // (not inside the install directory — S5), wrapped in the Installed
+        // envelope
         let registry_file = layout.registry_file("demo");
-        let stored: ComponentManifest =
+        let stored: crate::registry::RegistryEntry =
             serde_json::from_slice(&std::fs::read(&registry_file).unwrap()).unwrap();
-        assert_eq!(stored.version, "1.0.0");
+        assert_eq!(stored.source, crate::registry::ComponentSource::Installed);
+        assert_eq!(stored.manifest.version, "1.0.0");
         assert!(!layout.component_dir("demo").join("manifest.json").exists());
 
         // Landing check three: no workspace leftovers
@@ -777,9 +782,9 @@ mod tests {
             content_v2
         );
         // Registration updated in sync
-        let stored: ComponentManifest =
+        let stored: crate::registry::RegistryEntry =
             serde_json::from_slice(&std::fs::read(layout.registry_file("demo")).unwrap()).unwrap();
-        assert_eq!(stored.version, "2.0.0");
+        assert_eq!(stored.manifest.version, "2.0.0");
         // No workspace leftovers
         assert_eq!(std::fs::read_dir(layout.tmp_dir()).unwrap().count(), 0);
     }

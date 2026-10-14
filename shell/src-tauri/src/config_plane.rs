@@ -39,7 +39,7 @@
 //!
 //! Meta is stored at `registry/{id}.meta` (JSON): deliberately not using a
 //! .json suffix — the manifest scan of the registry directory filters by
-//! extension ([`crate::registry::load_all_manifests`]) and meta must not be
+//! extension ([`crate::registry::load_all_entries`]) and meta must not be
 //! mixed into the manifest listing.
 
 use crate::config::DataLayout;
@@ -47,7 +47,7 @@ use crate::registry::Registry;
 use serde::{Deserialize, Serialize};
 use slsdk_rs::{ComponentManifest, ConfigField, Endpoint};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// Component state (the five states of architecture.md "Component state
@@ -147,9 +147,12 @@ pub async fn save_meta(layout: &DataLayout, id: &str, meta: &ComponentMeta) -> i
     tokio::fs::write(layout.meta_file(id), json).await
 }
 
-/// Settle the determined state after install/config write: recompute the
-/// state from manifest + the existing config.toml; launch_policy keeps its
-/// existing value (falls back to the default when there is no meta).
+/// Settle the determined state after install/config write/create: recompute
+/// the state from manifest + the existing config.toml; launch_policy keeps
+/// its existing value (falls back to the default when there is no meta).
+/// The config.toml path is caller-supplied (`registry::config_path_for`) —
+/// installed entries keep `components/{id}/config.toml`, dev entries keep
+/// `project_dir/config.toml`.
 ///
 /// On compute failure (config.toml corrupt/unreadable), conservatively land
 /// on needs-config (the gate blocks startup and the user can resolve it by
@@ -157,8 +160,8 @@ pub async fn save_meta(layout: &DataLayout, id: &str, meta: &ComponentMeta) -> i
 pub async fn reconcile_state(
     layout: &DataLayout,
     manifest: &ComponentManifest,
+    config_path: PathBuf,
 ) -> io::Result<ComponentMeta> {
-    let config_path = layout.component_config_file(&manifest.id);
     let state = match compute_state(manifest, &config_path).await {
         Ok(state) => state,
         Err(e) => {
@@ -660,7 +663,7 @@ mod tests {
             ComponentState::Ready
         );
         // Settled-state persistence loop
-        let meta = reconcile_state(&layout, &m).await.unwrap();
+        let meta = reconcile_state(&layout, &m, path.clone()).await.unwrap();
         assert_eq!(meta.state, ComponentState::Ready);
         assert_eq!(meta.launch_policy, LaunchPolicy::Auto);
     }
@@ -683,7 +686,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let meta = reconcile_state(&layout, &m).await.unwrap();
+        let meta = reconcile_state(&layout, &m, layout.component_config_file("app"))
+            .await
+            .unwrap();
         assert_eq!(meta.state, ComponentState::NeedsConfig);
         assert_eq!(meta.launch_policy, LaunchPolicy::Manual);
     }

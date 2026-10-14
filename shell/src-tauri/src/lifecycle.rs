@@ -98,12 +98,30 @@ async fn allocate_endpoint(layout: &DataLayout, id: &str) -> io::Result<Endpoint
 /// health polling →
 /// register + start supervise. Any step failing reclaims the already-created
 /// child process and socket file.
+///
+/// `workdir` is the child's working directory — launch.command's relative
+/// resolution base. Callers derive it via [`crate::registry::workdir_for`]:
+/// installed entries resolve against the install directory, dev entries
+/// against the project directory.
 pub async fn spawn_component(
     layout: &DataLayout,
     registry: &Arc<Registry>,
     manifest: Arc<ComponentManifest>,
+    workdir: PathBuf,
     health_timeout: Duration,
 ) -> Result<(), LifecycleError> {
+    // launch=None (pure-frontend shape): no backend process to spawn — succeed
+    // as a no-op. Every start path funnels through this single entry, so the
+    // gate here covers restore-start / manual start / config restart alike
+    // (process-state presentation is phase 3; this phase only guarantees the
+    // logic does not break)
+    let Some(launch) = manifest.launch.as_ref() else {
+        log::info!(
+            "component {} has no backend process (launch=None), skipping spawn",
+            manifest.id
+        );
+        return Ok(());
+    };
     let endpoint = allocate_endpoint(layout, &manifest.id)
         .await
         .map_err(|source| LifecycleError::Io { source })?;
@@ -115,21 +133,21 @@ pub async fn spawn_component(
     // channel depends on it
     #[cfg(unix)]
     let mut command = {
-        let mut c = Command::new(&manifest.launch.command);
+        let mut c = Command::new(&launch.command);
         c.stdin(Stdio::null());
         c
     };
     #[cfg(windows)]
     let mut command = {
-        let mut c = Command::new(&manifest.launch.command);
+        let mut c = Command::new(&launch.command);
         c.stdin(Stdio::piped());
         c
     };
     command
-        .args(&manifest.launch.args)
+        .args(&launch.args)
         .env(ENV_ENDPOINT, endpoint.to_string())
         .env(ENV_TOKEN, token.as_str())
-        .current_dir(layout.component_dir(&manifest.id));
+        .current_dir(&workdir);
 
     let mut child = command
         .spawn()
@@ -178,15 +196,14 @@ pub async fn spawn_component(
         pid,
         stdin: shutdown_stdin,
     };
-    tokio::spawn(supervise(
-        child,
-        shutdown,
-        stop_rx,
-        Arc::clone(&manifest),
+    let ctx = SuperviseContext {
+        manifest: Arc::clone(&manifest),
+        workdir,
         socket_path,
-        Arc::clone(registry),
-        layout.clone(),
-    ));
+        registry: Arc::clone(registry),
+        layout: layout.clone(),
+    };
+    tokio::spawn(supervise(child, shutdown, stop_rx, ctx));
     log::info!(
         "component spawned: {} (ns={} v={} pid={pid:?} endpoint={endpoint})",
         manifest.id,
@@ -301,6 +318,19 @@ struct ShutdownChannel {
     stdin: Option<ChildStdin>,
 }
 
+/// The spawn context supervise needs after (and during) the wait: everything
+/// except the child process and its stop channel. One struct keeps the spawn
+/// signature within clippy's argument budget.
+struct SuperviseContext {
+    manifest: Arc<ComponentManifest>,
+    /// The child's working directory — also the config.toml base (same
+    /// source as the config-plane read/write paths).
+    workdir: PathBuf,
+    socket_path: Option<PathBuf>,
+    registry: Arc<Registry>,
+    layout: DataLayout,
+}
+
 /// Exit guard: waits for a natural exit or a stop signal; a stop signal
 /// triggers graceful shutdown (SIGTERM/stdin shutdown) with force-kill after
 /// the grace timeout; after exit it removes the registry entry, recomputes
@@ -310,11 +340,15 @@ async fn supervise(
     mut child: Child,
     mut shutdown: ShutdownChannel,
     mut stop_rx: watch::Receiver<()>,
-    manifest: Arc<ComponentManifest>,
-    socket_path: Option<PathBuf>,
-    registry: Arc<Registry>,
-    layout: DataLayout,
+    ctx: SuperviseContext,
 ) {
+    let SuperviseContext {
+        manifest,
+        workdir,
+        socket_path,
+        registry,
+        layout,
+    } = ctx;
     let namespace = manifest.namespace.clone();
     // Phase one: wait for natural exit or a stop signal. Do not touch child
     // inside the select arm —
@@ -378,7 +412,10 @@ async fn supervise(
     // its existing value.
     let state = match crate::config_plane::compute_state(
         &manifest,
-        &layout.component_config_file(&manifest.id),
+        // Same source as the config-plane read/write paths: the config.toml
+        // lives in the spawn workdir (install dir for installed entries,
+        // project dir for dev entries)
+        &workdir.join("config.toml"),
     )
     .await
     {
@@ -565,6 +602,7 @@ mod tests {
             &layout,
             &registry,
             Arc::clone(&m),
+            layout.component_dir("sleeper"),
             Duration::from_millis(600),
         )
         .await;
@@ -594,10 +632,13 @@ mod tests {
             child,
             ShutdownChannel { pid, stdin: None },
             stop_rx,
-            Arc::new(manifest("sleepapp", "sleepns", "/bin/sleep", &["30"])),
-            None,
-            Arc::clone(&registry),
-            layout.clone(),
+            SuperviseContext {
+                manifest: Arc::new(manifest("sleepapp", "sleepns", "/bin/sleep", &["30"])),
+                workdir: dir.path().join("work"),
+                socket_path: None,
+                registry: Arc::clone(&registry),
+                layout: layout.clone(),
+            },
         ));
         // Give supervise time to enter the wait state
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -659,10 +700,13 @@ mod tests {
             child,
             ShutdownChannel { pid, stdin: None },
             stop_rx,
-            Arc::new(m),
-            None,
-            Arc::clone(&registry),
-            layout.clone(),
+            SuperviseContext {
+                manifest: Arc::new(m),
+                workdir: dir.path().join("work"),
+                socket_path: None,
+                registry: Arc::clone(&registry),
+                layout: layout.clone(),
+            },
         ));
         tokio::time::sleep(Duration::from_millis(100)).await;
         stop_tx.send(()).unwrap();
@@ -711,9 +755,15 @@ mod tests {
         });
 
         let m = Arc::new(manifest("e2eapp", "e2ens", "/bin/sleep", &["30"]));
-        spawn_component(&layout, &registry, m, Duration::from_secs(3))
-            .await
-            .unwrap();
+        spawn_component(
+            &layout,
+            &registry,
+            m,
+            layout.component_dir("e2eapp"),
+            Duration::from_secs(3),
+        )
+        .await
+        .unwrap();
 
         // Registered
         assert!(registry.lookup("e2ens").await.is_some());

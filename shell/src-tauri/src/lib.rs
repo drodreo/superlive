@@ -25,6 +25,7 @@ pub mod commands;
 pub mod config;
 pub mod config_plane;
 pub mod gateway;
+pub mod import;
 pub mod installer;
 pub mod lifecycle;
 pub mod registry;
@@ -72,6 +73,8 @@ fn shell_token(state: tauri::State<'_, AppState>) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // The data directory is resolved by tauri per platform convention
             // (Linux: ~/.local/share/<identifier>)
@@ -102,6 +105,8 @@ pub fn run() {
             commands::list_components,
             commands::install_component,
             commands::uninstall_component,
+            commands::create_component,
+            commands::import_component,
             commands::start_component,
             commands::stop_component,
             commands::get_component_config,
