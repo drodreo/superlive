@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "superlive",
+  "productName": "Superlive",
   "identifier": "tech.zhuozhuo.superlive",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "superlive",
+        "title": "Superlive",
         "width": 1200,
         "height": 800
       }

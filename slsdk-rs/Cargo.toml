@@ -3,6 +3,7 @@ name = "slsdk-rs"
 version = "0.2.0"
 edition = "2021"
 description = "superlive v2 Plane B contract layer: manifest types, the registration protocol, lifecycle, and the serve() skeleton (protocol reference implementation)"
+license = "MIT"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -34,3 +35,12 @@ tower-service = "0.3"
 http-body-util = "0.1"
 # UdsIo needs to implement hyper::rt::Read/Write (not directly re-exported by hyper-util)
 hyper = "1"
+# tests/sigterm.rs: the probe child constructs a Router for serve()
+axum = "0.8"
+
+# tests/sigterm.rs is a harness-free binary: it re-spawns itself as the probe
+# child so the real SIGTERM path (shell → child process → graceful exit) can
+# be exercised without injecting signals into the shared test process.
+[[test]]
+name = "sigterm"
+harness = false
