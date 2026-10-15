@@ -28,6 +28,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import {
   createComponent,
   importComponent,
+  type BackendTemplate,
   type ComponentShape,
   type CreateComponentResult,
   type SdkMode,
@@ -150,6 +151,9 @@ export function CreateComponentDialog({
   // launch only = backend; neither disables submission
   const [entry, setEntry] = useState(true);
   const [launch, setLaunch] = useState(false);
+  // Backend runtime (server shapes only): the radio group shows when the
+  // backend checkbox is on; Cargo stays the default
+  const [template, setTemplate] = useState<BackendTemplate>('cargo');
   const [targetDir, setTargetDir] = useState('');
   // --- Advanced (collapsed by default) ---
   const [devPort, setDevPort] = useState('8700');
@@ -276,6 +280,9 @@ export function CreateComponentDialog({
           })),
           namespace: namespace.trim() || id.trim(),
           shape,
+          // Backend runtime only matters for server shapes: omitted when the
+          // backend checkbox is off (the shell defaults to cargo anyway)
+          template: launch ? template : undefined,
           target_dir: targetDir.trim(),
           dev_port: Number(devPort),
           sdk_mode: sdkMode,
@@ -591,6 +598,24 @@ export function CreateComponentDialog({
             <input type="checkbox" checked={launch} onChange={(e) => setLaunch(e.target.checked)} />
             {t('dlg.shapeLaunch')}
           </label>
+          {launch && (
+            <>
+              <div className="dlg-template-group" role="radiogroup" aria-label={t('dlg.templateLabel')}>
+                {(['cargo', 'deno', 'bun'] as const).map((option) => (
+                  <label key={option} className="checkbox-line">
+                    <input
+                      type="radio"
+                      name="dlg-backend-template"
+                      checked={template === option}
+                      onChange={() => setTemplate(option)}
+                    />
+                    {t(`dlg.template${option[0].toUpperCase()}${option.slice(1)}` as ShellKey)}
+                  </label>
+                ))}
+              </div>
+              <div className="dlg-hint">{t('dlg.templateHint')}</div>
+            </>
+          )}
           <div className={`dlg-hint${shape === null ? ' error' : ''}`}>{t(shapeKey)}</div>
         </div>
 

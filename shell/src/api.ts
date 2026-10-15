@@ -91,6 +91,9 @@ export const uninstallComponent = (id: string): Observable<void> =>
 /** Component shape (the create dialog's three options). */
 export type ComponentShape = 'frontend-backend' | 'frontend' | 'backend';
 
+/** Backend runtime template for server shapes (the Rust BackendTemplate mirror). */
+export type BackendTemplate = 'cargo' | 'deno' | 'bun';
+
 /** How the SDK is consumed: registry = crates.io/npm versions; local = path dependencies pointing at a superlive checkout. */
 export type SdkMode = 'registry' | 'local';
 
@@ -106,6 +109,8 @@ export interface CreateComponentArgs {
   display_titles: DisplayTitleInput[];
   namespace: string;
   shape: ComponentShape;
+  /** Backend runtime for server shapes; omitted for frontend-only (the shell defaults to cargo). */
+  template?: BackendTemplate;
   /** Project location (the dialog's directory choice); the target must not exist, or be an empty directory. */
   target_dir: string;
   /** Fixed dev port (written into the vite dev proxy and the README recipe). */

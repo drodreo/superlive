@@ -13,7 +13,7 @@ use crate::config::{DataLayout, HEALTH_INTERVAL, STOP_GRACE};
 use crate::registry::{Registry, RunningComponent};
 use slsdk_rs::{ComponentManifest, Endpoint, ENV_ENDPOINT, ENV_TOKEN};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -59,15 +59,34 @@ impl std::error::Error for LifecycleError {
     }
 }
 
-/// Allocate the component's listening descriptor: unix = UDS (the shell
-/// centrally manages the sockets/ directory);
-/// windows = random 127.0.0.1 port — tokio/mio has no Windows UDS
-/// (ecosystem-level limitation, falls back to TCP).
-async fn allocate_endpoint(layout: &DataLayout, id: &str) -> io::Result<Endpoint> {
+/// Random loopback TCP endpoint: bind :0 to get a system-assigned free port,
+/// release it, then hand it to the component; a tiny race window exists when
+/// the component binds (local loopback, accepted in v1) — failure surfaces as
+/// a health timeout.
+async fn allocate_tcp_endpoint() -> io::Result<Endpoint> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    drop(listener);
+    Ok(Endpoint::Tcp { addr })
+}
+
+/// Allocate the component's listening descriptor. A manifest declaring
+/// tcp-only transport always gets the loopback TCP descriptor on every
+/// platform (a runtime with no Unix domain socket support cannot bind the
+/// platform default); otherwise unix = UDS (the shell centrally manages the
+/// sockets/ directory), windows = random 127.0.0.1 port — tokio/mio has no
+/// Windows UDS (ecosystem-level limitation, falls back to TCP).
+async fn allocate_endpoint(
+    layout: &DataLayout,
+    manifest: &ComponentManifest,
+) -> io::Result<Endpoint> {
+    if manifest.transport == Some(slsdk_rs::TransportCaps::TcpOnly) {
+        return allocate_tcp_endpoint().await;
+    }
     #[cfg(unix)]
     {
         tokio::fs::create_dir_all(layout.sockets_dir()).await?;
-        let path = layout.socket_path(id);
+        let path = layout.socket_path(&manifest.id);
         // Leftover cleanup: a socket file left by a previous non-graceful
         // exit would make the component's bind fail with AddrInUse
         match tokio::fs::remove_file(&path).await {
@@ -81,17 +100,29 @@ async fn allocate_endpoint(layout: &DataLayout, id: &str) -> io::Result<Endpoint
     }
     #[cfg(windows)]
     {
-        // bind :0 to get a system-assigned free port, release it, then hand
-        // it to the component; a tiny race window exists when the component
-        // binds (local loopback, accepted in v1) — failure surfaces as a
-        // health timeout
         let _ = layout;
-        let _ = id;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let addr = listener.local_addr()?;
-        drop(listener);
-        Ok(Endpoint::Tcp { addr })
+        allocate_tcp_endpoint().await
     }
+}
+
+/// Absolute form of the launch command: a relative command resolves against
+/// the component's workdir, not the shell process's current directory.
+///
+/// Windows rationale: std's `resolve_exe` and `CreateProcessW` both resolve a
+/// relative program path against the *calling process's* current directory
+/// (the per-child `lpCurrentDirectory` never participates), so the relative
+/// `./target/release/<id>-server` form would be looked up under the shell's
+/// cwd and fail there. Unix is equivalent either way (the forked child chdirs
+/// to the workdir before exec), and an absolute command passes through
+/// unchanged. Joining then re-collecting the path components drops the middle
+/// `.` element `join` produces for `./x` commands — a pure string operation
+/// (no canonicalization syscalls; `..` elements are preserved untouched).
+fn absolute_launch_command(command: &str, workdir: &Path) -> PathBuf {
+    let command = Path::new(command);
+    if command.is_absolute() {
+        return command.to_path_buf();
+    }
+    workdir.join(command).components().collect::<PathBuf>()
 }
 
 /// Full component start flow: allocate endpoint → spawn (env injection) →
@@ -122,10 +153,15 @@ pub async fn spawn_component(
         );
         return Ok(());
     };
-    let endpoint = allocate_endpoint(layout, &manifest.id)
+    let endpoint = allocate_endpoint(layout, &manifest)
         .await
         .map_err(|source| LifecycleError::Io { source })?;
     let token = Arc::new(crate::auth::generate_token());
+
+    // Relative launch.command must become absolute *before* Command::new:
+    // on Windows both resolve_exe and CreateProcessW resolve it against the
+    // shell's cwd, not the child workdir (see absolute_launch_command).
+    let program = absolute_launch_command(&launch.command, &workdir);
 
     // stdin: unix passes null (the unix component path does not read stdin; a
     // dangling pipe serves no purpose);
@@ -133,13 +169,13 @@ pub async fn spawn_component(
     // channel depends on it
     #[cfg(unix)]
     let mut command = {
-        let mut c = Command::new(&launch.command);
+        let mut c = Command::new(&program);
         c.stdin(Stdio::null());
         c
     };
     #[cfg(windows)]
     let mut command = {
-        let mut c = Command::new(&launch.command);
+        let mut c = Command::new(&program);
         c.stdin(Stdio::piped());
         c
     };
@@ -386,7 +422,7 @@ async fn supervise(
                 Ok(status) => status,
                 Err(_) => {
                     log::warn!(
-                        "component {namespace} graceful shutdown timed out, killing it forcefully"
+                        "component {namespace} did not exit within the {STOP_GRACE:?} grace period after the stop request — sending SIGKILL (graceful exit is a convention the shell cannot assume the component honors)"
                     );
                     child.start_kill().ok();
                     child.wait().await
@@ -615,6 +651,65 @@ mod tests {
 
     // ---------- supervise graceful stop ----------
 
+    /// A component that ignores SIGTERM must still be stopped: supervise's
+    /// grace timeout falls back to SIGKILL (graceful exit is a convention the
+    /// shell never assumes — this is the backstop half of the stop contract).
+    #[tokio::test]
+    async fn supervise_force_kills_a_sigterm_ignoring_child() {
+        let (stop_tx, stop_rx) = watch::channel(());
+        // sh's `trap '' TERM` ignores SIGTERM: the graceful request lands, is
+        // ignored, and the child keeps running until the grace backstop fires.
+        let child = Command::new("/bin/sh")
+            .args(["-c", "trap '' TERM; sleep 30"])
+            .stdin(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id().expect("a freshly spawned child carries a pid");
+        let registry = Arc::new(Registry::new());
+        let dir = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(dir.path());
+
+        let handle = tokio::spawn(supervise(
+            child,
+            ShutdownChannel {
+                pid: Some(pid),
+                stdin: None,
+            },
+            stop_rx,
+            SuperviseContext {
+                manifest: Arc::new(manifest("stubbornapp", "stubbornns", "/bin/sh", &["-c"])),
+                workdir: dir.path().join("work"),
+                socket_path: None,
+                registry: Arc::clone(&registry),
+                layout: layout.clone(),
+            },
+        ));
+        // Give supervise time to enter the wait state
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        stop_tx.send(()).unwrap();
+
+        // The child ignores SIGTERM: supervise must come back right after the
+        // grace period via the SIGKILL backstop (long before the natural 30s
+        // end of the mocked component).
+        let joined = tokio::time::timeout(STOP_GRACE + Duration::from_secs(2), handle).await;
+        assert!(
+            joined.is_ok(),
+            "supervise must return via the force-kill backstop after the grace period"
+        );
+        assert!(registry.lookup("stubbornns").await.is_none());
+        // The force kill actually landed: the pid is gone (`trap '' TERM`
+        // would have kept a live process for the full 30 seconds otherwise).
+        let alive = Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .await
+            .expect("kill(1) must be available");
+        assert!(
+            !alive.success(),
+            "the SIGTERM-ignoring child must be dead after the force kill"
+        );
+    }
+
     #[tokio::test]
     async fn supervise_stops_child_on_signal() {
         let (stop_tx, stop_rx) = watch::channel(());
@@ -784,6 +879,71 @@ mod tests {
         assert!(
             !sock.exists(),
             "the socket file should be cleaned up on exit"
+        );
+    }
+
+    // ---------- endpoint allocation (transport declaration) ----------
+
+    fn manifest_from_json(json: &str) -> ComponentManifest {
+        serde_json::from_str(json).expect("test manifest JSON is valid")
+    }
+
+    // ---------- launch command absolutization ----------
+
+    #[test]
+    fn relative_launch_command_resolves_against_the_workdir() {
+        let program =
+            absolute_launch_command("./target/release/foo-server", Path::new("/tmp/proj"));
+        assert_eq!(program, Path::new("/tmp/proj/target/release/foo-server"));
+    }
+
+    #[test]
+    fn relative_launch_command_without_the_dot_prefix_joins_equally() {
+        let program = absolute_launch_command("bin/foo-server", Path::new("/tmp/proj"));
+        assert_eq!(program, Path::new("/tmp/proj/bin/foo-server"));
+    }
+
+    #[test]
+    fn absolute_launch_command_passes_through_unchanged() {
+        let program = absolute_launch_command("/usr/local/bin/foo", Path::new("/tmp/proj"));
+        assert_eq!(program, Path::new("/usr/local/bin/foo"));
+    }
+
+    #[test]
+    fn joined_middle_dot_component_is_normalized_away() {
+        // join("./x") produces "<workdir>/./x": the middle CurDir element is
+        // dropped by the component round-trip (zero "/." residue on every
+        // platform; a pure string-level rewrite, no syscalls)
+        let program = absolute_launch_command("./bin/foo", Path::new("/tmp/proj"));
+        assert!(!program.to_string_lossy().contains("/."));
+        assert_eq!(program, Path::new("/tmp/proj/bin/foo"));
+    }
+
+    #[tokio::test]
+    async fn tcp_only_manifest_forces_a_loopback_tcp_descriptor() {
+        let manifest = manifest_from_json(
+            r#"{"id":"mockapp","version":"0.1.0","min_shell_version":"0.0.0","namespace":"mockapp","display_name":"Mock","menu":null,"routes":[],"files":[],"transport":"tcponly"}"#,
+        );
+        let dir = tempfile::TempDir::new().unwrap();
+        let layout = DataLayout::new(dir.path());
+        let endpoint = allocate_endpoint(&layout, &manifest).await.unwrap();
+        assert!(
+            matches!(endpoint, Endpoint::Tcp { .. }),
+            "tcp-only transport must skip the platform UDS default"
+        );
+    }
+
+    #[tokio::test]
+    async fn default_manifest_keeps_the_platform_uds_descriptor() {
+        let manifest = manifest_from_json(
+            r#"{"id":"mockapp","version":"0.1.0","min_shell_version":"0.0.0","namespace":"mockapp","display_name":"Mock","menu":null,"routes":[],"files":[]}"#,
+        );
+        let dir = tempfile::TempDir::new().unwrap();
+        let layout = DataLayout::new(dir.path());
+        let endpoint = allocate_endpoint(&layout, &manifest).await.unwrap();
+        assert!(
+            matches!(endpoint, Endpoint::Uds { .. }),
+            "a manifest without a transport declaration keeps the platform default"
         );
     }
 }

@@ -533,6 +533,10 @@ pub struct CreateComponentArgs {
     pub namespace: String,
     /// "frontend-backend" | "frontend" | "backend"
     pub shape: String,
+    /// Backend runtime for server shapes: "cargo" (default) | "deno" | "bun".
+    /// Ignored for frontend-only projects; `None` keeps the original
+    /// Rust-only template.
+    pub template: Option<String>,
     /// Project location (the dialog's position picker); must not exist or be
     /// an empty directory.
     pub target_dir: String,
@@ -561,6 +565,17 @@ fn parse_shape(shape: &str) -> Result<slscaffold::ComponentShape, CreateError> {
         "backend" => Ok(slscaffold::ComponentShape::BackendOnly),
         other => Err(CreateError::InvalidArgument(format!(
             "unknown component shape: {other} (expected frontend-backend | frontend | backend)"
+        ))),
+    }
+}
+
+fn parse_template(template: Option<&str>) -> Result<slscaffold::BackendTemplate, CreateError> {
+    match template {
+        None | Some("cargo") => Ok(slscaffold::BackendTemplate::Cargo),
+        Some("deno") => Ok(slscaffold::BackendTemplate::Deno),
+        Some("bun") => Ok(slscaffold::BackendTemplate::Bun),
+        Some(other) => Err(CreateError::InvalidArgument(format!(
+            "unknown backend template: {other} (expected cargo | deno | bun)"
         ))),
     }
 }
@@ -653,6 +668,7 @@ pub(crate) async fn create_component_core(
     args: CreateComponentArgs,
 ) -> Result<CreateComponentResult, CreateError> {
     let shape = parse_shape(&args.shape)?;
+    let template = parse_template(args.template.as_deref())?;
     let sdk = parse_sdk(&args.sdk_mode, args.sdk_path.clone())?;
     validate_display_titles(&args.display_titles)?;
     let target = PathBuf::from(&args.target_dir);
@@ -716,6 +732,7 @@ pub(crate) async fn create_component_core(
         namespace: args.namespace.clone(),
         target_dir: target.clone(),
         shape,
+        template,
         dev_port: args.dev_port,
         sdk,
     };
@@ -755,6 +772,24 @@ pub(crate) async fn create_component_core(
         shape,
         slscaffold::ComponentShape::FrontendAndBackend | slscaffold::ComponentShape::BackendOnly
     );
+    // Backend artifact layout per template: cargo builds into
+    // server/target/release, the TS runtimes compile into bin/ (the
+    // superlive.build server section owns the same paths).
+    let launch_command = match template {
+        slscaffold::BackendTemplate::Cargo => format!("./target/release/{}-server", args.id),
+        slscaffold::BackendTemplate::Deno | slscaffold::BackendTemplate::Bun => {
+            format!("./bin/{}-server", args.id)
+        }
+    };
+    // The deno runtime has no Unix domain socket support (Deno.serve listens
+    // on TCP only): its declaration carries tcp-only transport, so the shell's
+    // endpoint allocation skips UDS on every platform. bun keeps the platform
+    // default (Bun.serve({unix}) works).
+    let transport = if has_server && template == slscaffold::BackendTemplate::Deno {
+        Some(slsdk_rs::TransportCaps::TcpOnly)
+    } else {
+        None
+    };
     let manifest = ComponentManifest {
         id: args.id.clone(),
         version,
@@ -781,11 +816,12 @@ pub(crate) async fn create_component_core(
             Vec::new()
         },
         launch: has_server.then(|| slsdk_rs::LaunchConfig {
-            command: format!("./target/release/{}-server", args.id),
+            command: launch_command,
             args: Vec::new(),
         }),
         files: Vec::new(),
         config: None,
+        transport,
         // The single-language fallback title moves in last: menu/routes above
         // already cloned it (struct literal fields evaluate in written order)
         display_name,
@@ -911,6 +947,7 @@ mod tests {
             ],
             namespace: ns.to_string(),
             shape: shape.to_string(),
+            template: None,
             target_dir: target.to_string_lossy().into_owned(),
             dev_port: 5180,
             sdk_mode: "registry".to_string(),
@@ -1073,6 +1110,72 @@ mod tests {
         assert!(m.menu.is_none());
         assert!(m.routes.is_empty());
         assert!(m.launch.is_some());
+    }
+
+    #[tokio::test]
+    async fn create_deno_template_declares_tcp_only_transport_and_bin_launch() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let target = dir.path().join("denoapp");
+        let mut args = base_args("denoapp", "denons", "backend", &target);
+        args.template = Some("deno".to_string());
+        create_component_core(&state, args).await.unwrap();
+        let m = &registry::load_entry(&state.layout, "denoapp")
+            .await
+            .unwrap()
+            .unwrap()
+            .manifest;
+        // The deno runtime has no UDS support: the declaration carries
+        // tcp-only transport, and the launch points at the bin/ artifact the
+        // superlive.build deno section produces.
+        assert_eq!(m.transport, Some(slsdk_rs::TransportCaps::TcpOnly));
+        assert_eq!(m.launch.as_ref().unwrap().command, "./bin/denoapp-server");
+        // The scaffolded server plane is the TS entry (version source included).
+        assert!(target.join("server/server.ts").is_file());
+        assert!(!target.join("server/Cargo.toml").exists());
+        assert_eq!(m.version, "0.1.0");
+    }
+
+    #[tokio::test]
+    async fn create_bun_template_keeps_default_transport_with_bin_launch() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let target = dir.path().join("bunapp");
+        let mut args = base_args("bunapp", "bunns", "backend", &target);
+        args.template = Some("bun".to_string());
+        create_component_core(&state, args).await.unwrap();
+        let m = &registry::load_entry(&state.layout, "bunapp")
+            .await
+            .unwrap()
+            .unwrap()
+            .manifest;
+        // bun keeps the platform default transport (Bun.serve({unix}) works);
+        // only the artifact layout differs from cargo.
+        assert_eq!(m.transport, None);
+        assert_eq!(m.launch.as_ref().unwrap().command, "./bin/bunapp-server");
+        assert!(target.join("server/server.ts").is_file());
+    }
+
+    #[tokio::test]
+    async fn create_cargo_template_keeps_the_legacy_declaration_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let target = dir.path().join("capp");
+        // template = None (the default): the declaration stays byte-compatible
+        // with the pre-template schema (no transport key, target/release launch).
+        let args = base_args("capp", "cns", "backend", &target);
+        create_component_core(&state, args).await.unwrap();
+        let m = &registry::load_entry(&state.layout, "capp")
+            .await
+            .unwrap()
+            .unwrap()
+            .manifest;
+        assert_eq!(m.transport, None);
+        assert_eq!(
+            m.launch.as_ref().unwrap().command,
+            "./target/release/capp-server"
+        );
+        assert!(target.join("server/Cargo.toml").is_file());
     }
 
     #[tokio::test]
