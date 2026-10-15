@@ -7,6 +7,8 @@ export default defineConfig({
       index: './src/index.ts',
       // ui entry: shared UI facility (@shell/sdk/ui, see the "@shell/sdk dual entry" section in architecture.md)
       ui: './src/ui/index.ts',
+      // server entry: Plane B one-liner serve() for Node-family runtimes (node/deno/bun; node:http adapter + runtime dispatch)
+      server: './src/server/index.ts',
     },
   },
   lib: [
