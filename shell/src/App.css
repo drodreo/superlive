@@ -712,6 +712,14 @@ button.link {
   font-weight: normal;
 }
 
+/* Backend runtime radio group (shown while the backend checkbox is on) */
+.dlg-template-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 .sensitive-wrap {
   display: flex;
   align-items: center;

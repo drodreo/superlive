@@ -435,11 +435,23 @@ pub fn config_path_for(layout: &DataLayout, entry: &RegistryEntry) -> PathBuf {
 }
 
 /// Project version, same source as the packaging chain: `server/Cargo.toml`
-/// [package].version for server shapes, `web/package.json` "version" for
-/// frontend-only shapes.
+/// [package].version for Rust server shapes, the COMPONENT_VERSION constant in
+/// `server/server.ts` for the TS (deno/bun) server shapes, `web/package.json`
+/// "version" for frontend-only shapes.
 pub(crate) fn project_version(root: &Path, has_server: bool) -> Result<String, String> {
     if has_server {
         let cargo_toml = root.join("server").join("Cargo.toml");
+        if !cargo_toml.is_file() {
+            // TS backend (deno/bun template): no Cargo.toml exists — the
+            // version source is the identity constant in server.ts (the same
+            // source-constant pattern as COMPONENT_ID).
+            let server_ts = root.join("server").join("server.ts");
+            let text = std::fs::read_to_string(&server_ts)
+                .map_err(|e| format!("failed to read {}: {e}", server_ts.display()))?;
+            return extract_string_constant(&text, "const COMPONENT_VERSION").ok_or_else(|| {
+                format!("{} has no COMPONENT_VERSION constant", server_ts.display())
+            });
+        }
         let text = std::fs::read_to_string(&cargo_toml)
             .map_err(|e| format!("failed to read {}: {e}", cargo_toml.display()))?;
         let parsed: toml::Value = toml::from_str(&text)
@@ -463,13 +475,14 @@ pub(crate) fn project_version(root: &Path, has_server: bool) -> Result<String, S
     }
 }
 
-/// Extract the COMPONENT_ID constant from a server main.rs source text
-/// (no regex dependency: the constant is template-generated and the shape is
-/// stable — `const COMPONENT_ID: &str = "...";`).
-fn extract_component_id(text: &str) -> Option<String> {
+/// Extract a string constant from generated source text (no regex dependency:
+/// the constants are template-generated and the shape is stable —
+/// `const NAME: ...= "..."` on its own line; the Rust and TS backends share
+/// the declaration form).
+fn extract_string_constant(text: &str, decl: &str) -> Option<String> {
     for line in text.lines() {
         let trimmed = line.trim_start();
-        let Some(rest) = trimmed.strip_prefix("const COMPONENT_ID") else {
+        let Some(rest) = trimmed.strip_prefix(decl) else {
             continue;
         };
         let Some(eq) = rest.find('=') else {
@@ -481,6 +494,11 @@ fn extract_component_id(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Extract the COMPONENT_ID constant from a server main.rs source text.
+fn extract_component_id(text: &str) -> Option<String> {
+    extract_string_constant(text, "const COMPONENT_ID")
 }
 
 /// Source-identity check (server shapes): the declaration id must match the
@@ -607,7 +625,7 @@ pub fn ensure_launch_artifact(entry: &RegistryEntry) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "the backend artifact of dev component {} is missing ({}) — build the project first (e.g. cargo build --release in {}), then start it again",
+        "the backend artifact of dev component {} is missing ({}) — build the project first (run scripts/superlive.build in {}), then start it again",
         entry.manifest.id,
         launch.command,
         project_dir.display()
