@@ -2,7 +2,8 @@
 //! placeholder residue, error paths, and the single-file build-script entry.
 
 use slscaffold::{
-    ComponentShape, LocalizedTitle, MissingFile, ScaffoldError, ScaffoldRequest, SdkDependency,
+    BackendTemplate, ComponentShape, LocalizedTitle, MissingFile, ScaffoldError, ScaffoldRequest,
+    SdkDependency,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,14 @@ const PLACEHOLDERS: [&str; 8] = [
 ];
 
 fn request(target: PathBuf, shape: ComponentShape) -> ScaffoldRequest {
+    request_with_template(target, shape, BackendTemplate::Cargo)
+}
+
+fn request_with_template(
+    target: PathBuf,
+    shape: ComponentShape,
+    template: BackendTemplate,
+) -> ScaffoldRequest {
     ScaffoldRequest {
         id: "demo-comp".to_string(),
         display_name: "Demo Comp".to_string(),
@@ -41,14 +50,24 @@ fn request(target: PathBuf, shape: ComponentShape) -> ScaffoldRequest {
         namespace: "demo".to_string(),
         target_dir: target,
         shape,
+        template,
         dev_port: 8700,
         sdk: SdkDependency::Registry,
     }
 }
 
 fn scaffold_into(dir: &TempDir, shape: ComponentShape) -> slscaffold::ScaffoldResult {
+    scaffold_with_template(dir, shape, BackendTemplate::Cargo)
+}
+
+fn scaffold_with_template(
+    dir: &TempDir,
+    shape: ComponentShape,
+    template: BackendTemplate,
+) -> slscaffold::ScaffoldResult {
     let target = dir.path().join("proj");
-    slscaffold::scaffold(&request(target, shape)).expect("scaffold must succeed")
+    slscaffold::scaffold(&request_with_template(target, shape, template))
+        .expect("scaffold must succeed")
 }
 
 fn read_all(root: &Path, created: &[PathBuf]) -> Vec<(String, String)> {
@@ -120,6 +139,209 @@ fn backend_only_omits_the_web_plane() {
 }
 
 // ---- App sample differs by shape ----
+
+// ---- backend template variants ----
+
+#[test]
+fn ts_templates_generate_the_ts_server_tree() {
+    for template in [BackendTemplate::Deno, BackendTemplate::Bun] {
+        let dir = TempDir::new().unwrap();
+        let result = scaffold_with_template(&dir, ComponentShape::FrontendAndBackend, template);
+        // The TS server plane is an entry file plus its package.json
+        // dependency root (no Cargo.toml / main.rs).
+        assert_eq!(result.created.len(), 12);
+        assert!(has_file(&result.created, "server/server.ts"));
+        assert!(has_file(&result.created, "server/package.json"));
+        assert!(!has_file(&result.created, "server/Cargo.toml"));
+        assert!(!has_file(&result.created, "server/src/main.rs"));
+        // The web plane is untouched by the backend template.
+        assert!(result.root.join("web/src/App.tsx").is_file());
+
+        // The dependency root resolves slsdk-ts through the same two modes as
+        // the web plane's manifest, and carries the pnpm build allowlist so a
+        // fresh `pnpm install` does not die on esbuild's postinstall gate.
+        let package = fs::read_to_string(result.root.join("server/package.json")).unwrap();
+        assert!(package.contains(r#""name": "demo-comp-server""#));
+        assert!(package.contains(r#""private": true"#));
+        assert!(package.contains(r#""slsdk-ts": "^0.2.0""#));
+        assert!(package.contains(r#""onlyBuiltDependencies": ["#));
+        assert!(package.contains("esbuild"));
+    }
+}
+
+#[test]
+fn ts_server_entry_carries_identity_and_sdk_contract() {
+    for template in [BackendTemplate::Deno, BackendTemplate::Bun] {
+        let dir = TempDir::new().unwrap();
+        let result = scaffold_with_template(&dir, ComponentShape::BackendOnly, template);
+        let server = fs::read_to_string(result.root.join("server/server.ts")).unwrap();
+        assert!(server.contains(
+            r#"import { serve, ENV_ENDPOINT, type ServerManifest } from "slsdk-ts/server";"#
+        ));
+        assert!(server.contains(r#"const COMPONENT_ID = "demo-comp";"#));
+        assert!(server.contains("const COMPONENT_VERSION"));
+        assert!(server.contains(r#"namespace: "demo""#));
+        // The ServerManifest literal carries every required field of the
+        // slsdk-ts contract (regression: a missing field is a generated-
+        // project type error the tree checks never saw).
+        assert!(server.contains(r#"min_shell_version: "0.0.0""#));
+        assert!(server.contains(r#"display_name: "Demo Comp""#));
+        assert!(server.contains("/api/v1/hello"));
+        // Zero placeholder residue.
+        for token in PLACEHOLDERS {
+            assert!(
+                !server.contains(&format!("__{token}__")),
+                "{template:?} carries {token}"
+            );
+        }
+    }
+}
+
+#[test]
+fn readme_documents_the_runtime_per_template() {
+    let dir = TempDir::new().unwrap();
+    let result = scaffold_with_template(
+        &dir,
+        ComponentShape::FrontendAndBackend,
+        BackendTemplate::Deno,
+    );
+    let readme = fs::read_to_string(result.root.join("README.md")).unwrap();
+    assert!(readme.contains("Deno backend (`server/server.ts`"));
+    // The deno template declares tcp-only transport in its manifest: the
+    // README must tell the author why.
+    assert!(readme.contains("tcp-only"));
+    assert!(readme.contains("- Deno (https://deno.com)"));
+    assert!(readme.contains("deno run --allow-net --allow-read --allow-env server/server.ts"));
+    assert!(!readme.contains("Rust toolchain"));
+
+    let dir = TempDir::new().unwrap();
+    let result = scaffold_with_template(
+        &dir,
+        ComponentShape::FrontendAndBackend,
+        BackendTemplate::Bun,
+    );
+    let readme = fs::read_to_string(result.root.join("README.md")).unwrap();
+    assert!(readme.contains("Bun backend (`server/server.ts`"));
+    assert!(readme.contains("- Bun (https://bun.sh)"));
+    assert!(readme.contains("bun run server/server.ts"));
+    assert!(!readme.contains("tcp-only"));
+
+    // The cargo template keeps the original README shape.
+    let dir = TempDir::new().unwrap();
+    let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
+    let readme = fs::read_to_string(result.root.join("README.md")).unwrap();
+    assert!(readme.contains("Rust toolchain"));
+    assert!(readme.contains("cargo run --manifest-path server/Cargo.toml"));
+    assert!(!readme.contains("tcp-only"));
+}
+
+#[test]
+fn ts_server_package_json_follows_the_sdk_dependency_mode() {
+    // dev-path mode: the dependency points at the local checkout, the same
+    // rendering the web plane's manifest gets from the shared placeholder.
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("proj");
+    let superlive_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("slscaffold lives inside the superlive checkout")
+        .to_path_buf();
+    let request = ScaffoldRequest {
+        sdk: SdkDependency::Local {
+            superlive_root: superlive_root.clone(),
+        },
+        ..request_with_template(target, ComponentShape::BackendOnly, BackendTemplate::Deno)
+    };
+    let result = slscaffold::scaffold(&request).expect("local-mode scaffold must succeed");
+    let package = fs::read_to_string(result.root.join("server/package.json")).unwrap();
+    // The `file:{path}` (single-slash) form is the existing rendering the web
+    // plane's manifest uses — this plane mirrors it byte for byte.
+    let expected = format!(
+        r#""slsdk-ts": "file:{}/slsdk-ts""#,
+        superlive_root.display()
+    );
+    assert!(
+        package.contains(&expected),
+        "local-mode line missing: {package}"
+    );
+}
+
+#[test]
+fn scaffold_creates_a_missing_parent_chain() {
+    // Regression: a target whose parent does not exist used to surface as a
+    // bare Io NotFound (the scaffold owns the tree it creates, parents
+    // included).
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("a").join("b").join("proj");
+    let result = slscaffold::scaffold(&request(target, ComponentShape::BackendOnly))
+        .expect("missing parents are created, not an error");
+    assert!(result.root.join("server/src/main.rs").is_file());
+}
+
+// ---- the generated cargo project must compile ----
+//
+// Regression: the template checks verify tree shape and placeholder residue
+// but never compile the generated code, so a manifest-shape drift between
+// slsdk-rs and the template (Option fields, new struct fields) surfaced only
+// at the user's first build. This test is the compile gate.
+
+#[test]
+fn generated_cargo_project_compiles() {
+    // Local SDK deps: the generated project compiles against this checkout
+    // (registry versions depend on a crates.io release that lags the repo).
+    // The independent CARGO_TARGET_DIR keeps this crate's target untouched.
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("proj");
+    let superlive_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("slscaffold lives inside the superlive checkout")
+        .to_path_buf();
+    let request = ScaffoldRequest {
+        sdk: SdkDependency::Local {
+            superlive_root: superlive_root.clone(),
+        },
+        ..request(target, ComponentShape::BackendOnly)
+    };
+    let result = slscaffold::scaffold(&request).expect(
+        "local-mode scaffold must succeed (build slsdk-ts first: cd slsdk-ts && pnpm install && pnpm build)",
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["check", "--manifest-path"])
+        .arg(result.root.join("server").join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", dir.path().join("cargo-target"))
+        .output()
+        .expect("cargo must be on PATH for the compile check");
+    assert!(
+        output.status.success(),
+        "the generated cargo project must compile:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn next_steps_follow_the_backend_template() {
+    let cases = [
+        (BackendTemplate::Cargo, "cargo run --manifest-path"),
+        (
+            BackendTemplate::Deno,
+            "deno run --allow-net --allow-read --allow-env",
+        ),
+        (BackendTemplate::Bun, "bun run"),
+    ];
+    for (template, needle) in cases {
+        let dir = TempDir::new().unwrap();
+        let result = scaffold_with_template(&dir, ComponentShape::BackendOnly, template);
+        let backend_step = result
+            .next_steps
+            .iter()
+            .find(|step| step.starts_with("backend :"))
+            .expect("backend-only next_steps carry the backend line");
+        assert!(
+            backend_step.contains(needle),
+            "{template:?} next_steps: {backend_step}"
+        );
+    }
+}
 
 #[test]
 fn app_sample_api_chain_follows_the_shape() {

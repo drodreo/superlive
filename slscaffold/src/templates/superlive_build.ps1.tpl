@@ -41,14 +41,41 @@ if (-not $HasServerDir -and -not $HasWebDir) {
     Die "nothing to build: neither server/ nor web/ exists under $Root"
 }
 
-#@if HAS_SERVER
+#@if HAS_SERVER && BACKEND_CARGO
 if ($HasServerDir) {
     if (-not (Test-Command 'cargo')) { Die 'missing required command: cargo' }
     Log 'building server: cargo build --release'
     Push-Location (Join-Path $Root 'server')
     try { cargo build --release }
     finally { Pop-Location }
-    $ServerBin = Join-Path $Root 'server/target/release/__ID__-server'
+    # cargo appends .exe on Windows
+    $ServerBin = Join-Path $Root 'server/target/release/__ID__-server.exe'
+    if (-not (Test-Path $ServerBin)) { Die "release binary does not exist: $ServerBin" }
+}
+#@endif
+#@if HAS_SERVER && BACKEND_DENO
+if ($HasServerDir) {
+    if (-not (Test-Command 'deno')) { Die 'missing required command: deno - install it from https://deno.com first' }
+    Log 'building server: deno compile --output bin/__ID__-server server/server.ts'
+    Push-Location $Root
+    try { deno compile --output 'bin/__ID__-server' 'server/server.ts' }
+    finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) { Die 'server build failed' }
+    # deno compile appends .exe on Windows
+    $ServerBin = Join-Path $Root 'bin/__ID__-server.exe'
+    if (-not (Test-Path $ServerBin)) { Die "release binary does not exist: $ServerBin" }
+}
+#@endif
+#@if HAS_SERVER && BACKEND_BUN
+if ($HasServerDir) {
+    if (-not (Test-Command 'bun')) { Die 'missing required command: bun - install it from https://bun.sh first' }
+    Log 'building server: bun build --compile --outfile bin/__ID__-server server/server.ts'
+    Push-Location $Root
+    try { bun build --compile --outfile 'bin/__ID__-server' 'server/server.ts' }
+    finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) { Die 'server build failed' }
+    # bun build --compile appends .exe on Windows
+    $ServerBin = Join-Path $Root 'bin/__ID__-server.exe'
     if (-not (Test-Path $ServerBin)) { Die "release binary does not exist: $ServerBin" }
 }
 #@endif
