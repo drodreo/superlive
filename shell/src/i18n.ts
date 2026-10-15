@@ -25,7 +25,7 @@ const zh = {
   'theme.toLight': '浅色',
 
   // Welcome page
-  'welcome.title': '欢迎使用 superlive',
+  'welcome.title': '欢迎使用 Superlive',
   'welcome.desc': '组件化的个人平台——左侧菜单进入已安装的组件，底部管理组件与查看设置。',
 
   // Component host (module-tier container)
@@ -35,7 +35,7 @@ const zh = {
   // Settings page
   'settings.update': '应用更新',
   'settings.check': '检查更新',
-  'settings.updateHint': '当前版本 {{version}}，检查并安装 superlive 的最新版本。',
+  'settings.updateHint': '当前版本 {{version}}，检查并安装 Superlive 的最新版本。',
   'settings.language': '语言',
   'settings.languageHint': '界面语言，切换立即生效。',
 
@@ -90,7 +90,7 @@ const zh = {
   'launch.later': '稍后再说',
   'launch.saveAndStart': '保存并启动',
   'launch.policy': '启动策略',
-  'launch.auto': '自动：每次打开 superlive 时自动拉起该组件',
+  'launch.auto': '自动：每次打开 Superlive 时自动拉起该组件',
   'launch.manual': '手动：在组件管理页手动启动',
   'launch.policyFailed': '保存启动策略失败: {{error}}',
 
@@ -209,7 +209,7 @@ const en: Record<ShellKey, string> = {
   'theme.toLight': 'Light',
 
   // Welcome page
-  'welcome.title': 'Welcome to superlive',
+  'welcome.title': 'Welcome to Superlive',
   'welcome.desc':
     'A component-based personal platform — open installed components from the menu above; manage components and settings at its foot.',
 
@@ -220,7 +220,7 @@ const en: Record<ShellKey, string> = {
   // Settings page
   'settings.update': 'App update',
   'settings.check': 'Check for updates',
-  'settings.updateHint': 'Current version {{version}}. Check for and install the latest superlive release.',
+  'settings.updateHint': 'Current version {{version}}. Check for and install the latest Superlive release.',
   'settings.language': 'Language',
   'settings.languageHint': 'Interface language — applies immediately.',
 
@@ -276,7 +276,7 @@ const en: Record<ShellKey, string> = {
   'launch.later': 'Not now',
   'launch.saveAndStart': 'Save and start',
   'launch.policy': 'Launch policy',
-  'launch.auto': 'Auto: start this component automatically whenever superlive opens',
+  'launch.auto': 'Auto: start this component automatically whenever Superlive opens',
   'launch.manual': 'Manual: start it yourself from the component management page',
   'launch.policyFailed': 'Failed to save the launch policy: {{error}}',
 

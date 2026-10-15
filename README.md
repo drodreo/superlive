@@ -1,8 +1,8 @@
-# superlive
+# Superlive
 
 A component-based personal platform: one desktop shell, functions as installable components.
 
-superlive began as a bloated monolithic personal application. The rewrite inverted it: the core now does only three things — install components, run them, and manage their lifecycle. Everything else (your todo list, knowledge base, finance dashboard, writing tools…) is a component you install only if you want it.
+Superlive began as a bloated monolithic personal application. The rewrite inverted it: the core now does only three things — install components, run them, and manage their lifecycle. Everything else (your todo list, knowledge base, finance dashboard, writing tools…) is a component you install only if you want it.
 
 ## What you can do with it
 
@@ -36,7 +36,7 @@ Grab the package for your platform from the GitHub Releases page — `.deb` (Lin
 
 **macOS first launch**: the app is not notarized, so Gatekeeper blocks the very first launch. Allow it via **System Settings → Privacy & Security → Open Anyway**, or strip the quarantine flag from the command line before launching:
 
-    xattr -cr /Applications/superlive.app
+    xattr -cr /Applications/Superlive.app
 
 Updates through the built-in updater never re-trigger the gate — the updater swaps the app bundle directly, without the download-time quarantine attribute.
 

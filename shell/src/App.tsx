@@ -120,12 +120,12 @@ export default function App() {
           ? (menuTitleOf(components.find((c) => c.id === route.id)) ?? t('title.configFallback'))
           : route.name === 'component'
             ? (menuTitleOf(activeComponent) ?? route.ns)
-            : 'superlive';
+            : 'Superlive';
 
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">superlive</div>
+        <div className="brand">Superlive</div>
         <nav className="menu">
           {menuComponents.map((c) => {
             const title = menuTitleOf(c) ?? c.menu!.title;
