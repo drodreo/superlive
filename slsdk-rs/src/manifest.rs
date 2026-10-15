@@ -61,6 +61,27 @@ pub struct ComponentManifest {
     /// (without a config section) unaffected.
     #[serde(default)]
     pub config: Option<ComponentConfig>,
+    /// Declared transport capabilities of the backend process (the shell reads
+    /// it when choosing the injected `SL_ENDPOINT` descriptor). `None` = the
+    /// default: every transport the host platform offers (Unix domain socket
+    /// on Linux/macOS, loopback TCP everywhere). `serde(default)` keeps legacy
+    /// manifests (without the key) parsing unchanged, and `skip_serializing_if`
+    /// omits the default so existing manifest bytes stay identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<TransportCaps>,
+}
+
+/// Transport capability tiers a component backend can declare
+/// (architecture.md "Plane B contract · transport"). The set is the minimal
+/// v1 vocabulary; runtimes that cannot offer the platform default declare
+/// their restriction here instead of failing at bind time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransportCaps {
+    /// The backend can only listen on TCP (e.g. a runtime with no Unix domain
+    /// socket support): the shell injects a random loopback `tcp:` descriptor
+    /// on every platform instead of its platform default.
+    TcpOnly,
 }
 
 /// UI mounting shape (architecture.md "Plane A Contract": two UI container tiers).
@@ -583,4 +604,53 @@ fn sha256_hex(data: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+
+    /// Minimal valid manifest body (legacy shape: no transport key).
+    const LEGACY_MANIFEST: &str = r#"{
+        "id": "demo",
+        "version": "0.1.0",
+        "min_shell_version": "0.2.0",
+        "namespace": "demo",
+        "display_name": "Demo",
+        "menu": null,
+        "routes": [],
+        "files": []
+    }"#;
+
+    #[test]
+    fn legacy_manifest_without_transport_key_parses_as_none() {
+        let manifest: ComponentManifest = serde_json::from_str(LEGACY_MANIFEST).unwrap();
+        assert_eq!(manifest.transport, None);
+    }
+
+    #[test]
+    fn declared_tcp_only_parses_and_survives_a_round_trip() {
+        let manifest: ComponentManifest = serde_json::from_str(
+            &LEGACY_MANIFEST.replace(r#""files": []"#, r#""files": [], "transport": "tcponly""#),
+        )
+        .unwrap();
+        assert_eq!(manifest.transport, Some(TransportCaps::TcpOnly));
+
+        let bytes = serde_json::to_string(&manifest).unwrap();
+        let back: ComponentManifest = serde_json::from_str(&bytes).unwrap();
+        assert_eq!(back.transport, Some(TransportCaps::TcpOnly));
+    }
+
+    #[test]
+    fn none_transport_serializes_without_the_key() {
+        // Byte compatibility: a manifest without a transport declaration
+        // serializes exactly like the pre-field schema (the key is absent,
+        // not null).
+        let manifest: ComponentManifest = serde_json::from_str(LEGACY_MANIFEST).unwrap();
+        let bytes = serde_json::to_string(&manifest).unwrap();
+        assert!(!bytes.contains("transport"), "{bytes}");
+
+        let round: ComponentManifest = serde_json::from_str(&bytes).unwrap();
+        assert_eq!(round.transport, None);
+    }
 }

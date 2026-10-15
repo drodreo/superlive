@@ -347,22 +347,38 @@ where
     })
 }
 
-/// Installs exit signal listening (independent task): holds a clone of the watch sender for
-/// the process lifetime, ensuring the serve side's receiver `changed()` does not return
-/// early because all senders were dropped.
+/// Installs exit signal listening and spawns its watcher task.
+///
+/// The signal handler registration is a **synchronous** call performed right
+/// here in `serve()`'s main flow — not inside the spawned task. Between
+/// process start and the watcher task's first scheduling step there is an
+/// unbounded window in which the default disposition would still kill the
+/// process (a SIGTERM landing there exits 143 instead of the graceful
+/// shutdown); registering in the main flow means serve() returning implies
+/// the handler is installed, and the spawned task only awaits the
+/// already-registered stream and forwards to the shutdown channel. (SIGINT is
+/// deliberately not registered: the lifecycle contract names SIGTERM — stdin
+/// `shutdown` on Windows — as the single stop signal; Ctrl-C semantics are
+/// the terminal's business. The Windows stdin watcher registers no system
+/// disposition at all, so it has no such window by construction.)
+///
+/// Holds a clone of the watch sender for the process lifetime, ensuring the
+/// serve side's receiver `changed()` does not return early because all
+/// senders were dropped.
 fn spawn_signal_watcher(shutdown_tx: watch::Sender<bool>) {
     #[cfg(unix)]
     {
+        // Synchronous registration: from this point on SIGTERM is captured.
+        // Install failure only degrades to "cannot auto-exit"; the service
+        // itself keeps running.
+        let sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .map_err(|e| log::error!("failed to install the SIGTERM handler: {e}"))
+            .ok();
         tokio::spawn(async move {
-            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-                Ok(mut sig) => {
-                    if sig.recv().await.is_some() {
-                        let _ = shutdown_tx.send(true);
-                    }
+            if let Some(mut sigterm) = sigterm {
+                if sigterm.recv().await.is_some() {
+                    let _ = shutdown_tx.send(true);
                 }
-                // Install failure only degrades to "cannot auto-exit"; the service itself
-                // keeps running
-                Err(e) => log::error!("failed to install the SIGTERM handler: {e}"),
             }
         });
     }

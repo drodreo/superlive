@@ -22,7 +22,7 @@ pub use config::{config_router, ConfigError, ConfigIntegration, ConfigStore, OnC
 pub use endpoint::{Endpoint, EndpointParseError, ENV_ENDPOINT, ENV_TOKEN};
 pub use manifest::{
     verify_files, ComponentConfig, ComponentManifest, ConfigField, ConfigFieldType, FileEntry,
-    LaunchConfig, ManifestError, MenuDeclaration, RouteDeclaration, UiDeclaration, UiType,
-    VerifyError,
+    LaunchConfig, ManifestError, MenuDeclaration, RouteDeclaration, TransportCaps, UiDeclaration,
+    UiType, VerifyError,
 };
 pub use serve::{serve, serve_with_config, ServeError, ServeInfo, ShutdownHandle};
