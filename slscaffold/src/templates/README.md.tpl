@@ -8,9 +8,21 @@ registered with the superlive shell).
 A [superlive](https://github.com/drodreo/superlive) component scaffolded by `slscaffold`.
 #@endif
 
-#@if HAS_SERVER
+#@if HAS_SERVER && BACKEND_CARGO
 - **server/** — Rust backend (`__ID__-server`). The `slsdk-rs` serve() skeleton handles
   listening, token auth, the `/health` endpoint and SIGTERM graceful exit; you only write
+  business handlers.
+#@endif
+#@if HAS_SERVER && BACKEND_DENO
+- **server/** — Deno backend (`server/server.ts`, TypeScript). The `slsdk-ts` serve()
+  skeleton handles listening, token auth and the `/health` endpoint; you only write
+  business handlers. The shell writes the project's `manifest.json` at registration, and
+  that declaration carries tcp-only transport (the Deno runtime has no Unix domain socket
+  support), so the shell injects a loopback TCP port on every platform.
+#@endif
+#@if HAS_SERVER && BACKEND_BUN
+- **server/** — Bun backend (`server/server.ts`, TypeScript). The `slsdk-ts` serve()
+  skeleton handles listening, token auth and the `/health` endpoint; you only write
   business handlers.
 #@endif
 #@if HAS_WEB
@@ -27,8 +39,14 @@ A [superlive](https://github.com/drodreo/superlive) component scaffolded by `sls
 
 ## Prerequisites
 
-#@if HAS_SERVER
+#@if HAS_SERVER && BACKEND_CARGO
 - Rust toolchain (stable)
+#@endif
+#@if HAS_SERVER && BACKEND_DENO
+- Deno (https://deno.com)
+#@endif
+#@if HAS_SERVER && BACKEND_BUN
+- Bun (https://bun.sh)
 #@endif
 #@if HAS_WEB
 - Node.js + pnpm (or npm)
@@ -39,11 +57,25 @@ A [superlive](https://github.com/drodreo/superlive) component scaffolded by `sls
 ## Develop
 
 #@endif
-#@if !IMPORTED && HAS_SERVER && HAS_WEB
+#@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_CARGO
 Terminal 1 — backend (fixed port so the dev proxy can reach it):
 
     SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ cargo run --manifest-path server/Cargo.toml
 
+#@endif
+#@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_DENO
+Terminal 1 — backend (fixed port so the dev proxy can reach it):
+
+    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ deno run --allow-net --allow-read --allow-env server/server.ts
+
+#@endif
+#@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_BUN
+Terminal 1 — backend (fixed port so the dev proxy can reach it):
+
+    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ bun run server/server.ts
+
+#@endif
+#@if !IMPORTED && HAS_SERVER && HAS_WEB
 Terminal 2 — frontend:
 
     cd web && pnpm install && pnpm dev
@@ -64,11 +96,29 @@ Open http://localhost:5173 — in standalone mode `main.tsx` fakes the shell inj
 vite dev proxy target is a placeholder, and API calls fail unless something else
 serves this component's namespace.
 #@endif
-#@if !IMPORTED && HAS_SERVER && !HAS_WEB
+#@if !IMPORTED && HAS_SERVER && !HAS_WEB && BACKEND_CARGO
 Run the backend standalone (fixed port; auth is only enforced when launched by the
 shell):
 
     SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ cargo run --manifest-path server/Cargo.toml
+
+Inside the shell, the gateway forwards `/api/__NS__/*` to this backend with the namespace
+segment stripped; the backend always receives its own full paths (`/api/v1/hello`).
+#@endif
+#@if !IMPORTED && HAS_SERVER && !HAS_WEB && BACKEND_DENO
+Run the backend standalone (fixed port; auth is only enforced when launched by the
+shell):
+
+    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ deno run --allow-net --allow-read --allow-env server/server.ts
+
+Inside the shell, the gateway forwards `/api/__NS__/*` to this backend with the namespace
+segment stripped; the backend always receives its own full paths (`/api/v1/hello`).
+#@endif
+#@if !IMPORTED && HAS_SERVER && !HAS_WEB && BACKEND_BUN
+Run the backend standalone (fixed port; auth is only enforced when launched by the
+shell):
+
+    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ bun run server/server.ts
 
 Inside the shell, the gateway forwards `/api/__NS__/*` to this backend with the namespace
 segment stripped; the backend always receives its own full paths (`/api/v1/hello`).

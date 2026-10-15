@@ -29,18 +29,21 @@ fn component_manifest() -> ComponentManifest {
         min_shell_version: "0.0.0".to_string(),
         namespace: "__NS__".to_string(),
         display_name: "__NAME__".to_string(),
-        ui: UiDeclaration {
+        ui: Some(UiDeclaration {
             ui_type: UiType::Module,
             entry: String::new(),
-        },
+        }),
         menu: None,
         routes: Vec::new(),
-        launch: LaunchConfig {
+        launch: Some(LaunchConfig {
             command: String::new(),
             args: Vec::new(),
-        },
+        }),
         files: Vec::new(),
         config: None,
+        // serve() never consumes the transport declaration (identity only):
+        // absent = every transport the host platform offers.
+        transport: None,
     }
 }
 

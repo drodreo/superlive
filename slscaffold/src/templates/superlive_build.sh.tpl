@@ -14,8 +14,14 @@
 # triggers the frontend build.
 #
 # Requires:
-#@if HAS_SERVER
+#@if HAS_SERVER && BACKEND_CARGO
 #   (server build) cargo
+#@endif
+#@if HAS_SERVER && BACKEND_DENO
+#   (server build) deno (https://deno.com)
+#@endif
+#@if HAS_SERVER && BACKEND_BUN
+#   (server build) bun (https://bun.sh)
 #@endif
 #@if HAS_WEB
 #   (web build) pnpm (or npm)
@@ -42,12 +48,30 @@ if [ "$HAS_SERVER_DIR" -eq 0 ] && [ "$HAS_WEB_DIR" -eq 0 ]; then
   die "nothing to build: neither server/ nor web/ exists under $ROOT"
 fi
 
-#@if HAS_SERVER
+#@if HAS_SERVER && BACKEND_CARGO
 if [ "$HAS_SERVER_DIR" -eq 1 ]; then
   command -v cargo >/dev/null 2>&1 || die "missing required command: cargo"
   log "building server: cargo build --release"
   (cd "$ROOT/server" && cargo build --release)
   SERVER_BIN="$ROOT/server/target/release/__ID__-server"
+  [ -f "$SERVER_BIN" ] || die "release binary does not exist: $SERVER_BIN"
+fi
+#@endif
+#@if HAS_SERVER && BACKEND_DENO
+if [ "$HAS_SERVER_DIR" -eq 1 ]; then
+  command -v deno >/dev/null 2>&1 || die "missing required command: deno - install it from https://deno.com first"
+  log "building server: deno compile --output bin/__ID__-server server/server.ts"
+  (cd "$ROOT" && deno compile --output "bin/__ID__-server" server/server.ts)
+  SERVER_BIN="$ROOT/bin/__ID__-server"
+  [ -f "$SERVER_BIN" ] || die "release binary does not exist: $SERVER_BIN"
+fi
+#@endif
+#@if HAS_SERVER && BACKEND_BUN
+if [ "$HAS_SERVER_DIR" -eq 1 ]; then
+  command -v bun >/dev/null 2>&1 || die "missing required command: bun - install it from https://bun.sh first"
+  log "building server: bun build --compile --outfile bin/__ID__-server server/server.ts"
+  (cd "$ROOT" && bun build --compile --outfile "bin/__ID__-server" server/server.ts)
+  SERVER_BIN="$ROOT/bin/__ID__-server"
   [ -f "$SERVER_BIN" ] || die "release binary does not exist: $SERVER_BIN"
 fi
 #@endif
