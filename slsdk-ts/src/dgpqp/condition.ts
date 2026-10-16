@@ -1,7 +1,7 @@
 // QueryCondition: a single filter condition
 // Aligned with core/src/dgpqp/condition.rs as a cross-language protocol (copied verbatim from superlive ui).
 
-import type { QueryOperator } from './operator';
+import type { QueryOperator } from "./operator";
 
 export interface QueryCondition {
   field: string;
@@ -21,9 +21,9 @@ export interface QueryCondition {
  * - `data` content field (adjacent tagging)
  */
 export type QueryValue =
-  | { type: 'single'; data: QuerySingleValue }
-  | { type: 'range'; data: { min: QuerySingleValue; max: QuerySingleValue } }
-  | { type: 'set'; data: QuerySingleValue[] };
+  | { type: "single"; data: QuerySingleValue }
+  | { type: "range"; data: { min: QuerySingleValue; max: QuerySingleValue } }
+  | { type: "set"; data: QuerySingleValue[] };
 
 /** QuerySingleValue: aligned with core/src/dgpqp/condition.rs::QuerySingleValue */
 export type QuerySingleValue = string | number | boolean | null;

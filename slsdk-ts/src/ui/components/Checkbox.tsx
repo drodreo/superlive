@@ -12,7 +12,14 @@ export interface CheckboxProps {
   name?: string;
 }
 
-export function Checkbox({ checked, onChange, label, disabled, id, name }: CheckboxProps) {
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  disabled,
+  id,
+  name,
+}: CheckboxProps) {
   return (
     <label className="sl-ui-checkbox-wrapper">
       <input

@@ -9,7 +9,8 @@
 //! plane and are not consumed by the serve surface.
 
 /** JSON value mirror of `serde_json::Value` (the manifest is a JSON document with zero conversion). */
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 /** The manifest the component backend receives (architecture.md "Installation and Lifecycle").
  *
@@ -94,4 +95,5 @@ export interface ConfigField {
 }
 
 /** Config value types (architecture.md "Configuration Plane", five tiers; lowercase serde rename). */
-export type ConfigFieldType = "string" | "number" | "boolean" | "select" | "datetime";
+export type ConfigFieldType =
+  "string" | "number" | "boolean" | "select" | "datetime";

@@ -7,14 +7,14 @@
 
 #![cfg(unix)]
 
-use axum::http::{header::AUTHORIZATION, Request, StatusCode};
-use axum::routing::get;
 use axum::Router;
+use axum::http::{Request, StatusCode, header::AUTHORIZATION};
+use axum::routing::get;
 use http_body_util::BodyExt;
 use hyper::rt::{Read, Write};
-use hyper_util::client::legacy::{connect::Connected, connect::Connection, Client};
+use hyper_util::client::legacy::{Client, connect::Connected, connect::Connection};
 use hyper_util::rt::{TokioExecutor, TokioIo};
-use slsdk_rs::{ComponentManifest, Endpoint, ENV_ENDPOINT, ENV_TOKEN};
+use slsdk_rs::{ComponentManifest, ENV_ENDPOINT, ENV_TOKEN, Endpoint};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -128,8 +128,13 @@ async fn uds_and_tcp_lifecycle_smoke() {
     // ===== Scenario 1: shell-launched shape (UDS + token) =====
     let dir = tempfile::tempdir().unwrap();
     let sock = dir.path().join("slsdk-uds-test.sock");
-    std::env::set_var(ENV_ENDPOINT, format!("uds:{}", sock.display()));
-    std::env::set_var(ENV_TOKEN, "test-token-123");
+    // SAFETY: edition 2024 marks env mutation unsafe (multi-threaded UB risk).
+    // This runs before serve() starts its threads, so nothing reads the env
+    // concurrently.
+    unsafe {
+        std::env::set_var(ENV_ENDPOINT, format!("uds:{}", sock.display()));
+        std::env::set_var(ENV_TOKEN, "test-token-123");
+    }
 
     // Sample component business route: the shell strips /api/{ns} before forwarding; the
     // component only sees its own path space
@@ -186,8 +191,13 @@ async fn uds_and_tcp_lifecycle_smoke() {
     );
 
     // ===== Scenario 2: standalone debugging shape (no env → tcp:127.0.0.1:0 + no auth) =====
-    std::env::remove_var(ENV_ENDPOINT);
-    std::env::remove_var(ENV_TOKEN);
+    // SAFETY: edition 2024 marks env mutation unsafe (multi-threaded UB risk).
+    // The first server has fully shut down (wait() returned) and the next one
+    // has not started, so no other thread reads the env concurrently.
+    unsafe {
+        std::env::remove_var(ENV_ENDPOINT);
+        std::env::remove_var(ENV_TOKEN);
+    }
     let info = slsdk_rs::serve(Router::new(), &test_manifest())
         .await
         .unwrap();

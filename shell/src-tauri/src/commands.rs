@@ -19,7 +19,7 @@
 use crate::config_plane;
 use crate::import::ImportOutcome;
 use crate::registry::{ComponentSource, RegistryEntry};
-use crate::{installer, registry, supervisor, AppState};
+use crate::{AppState, installer, registry, supervisor};
 use serde::Serialize;
 use slsdk_rs::{ComponentManifest, MenuDeclaration, RouteDeclaration, UiDeclaration};
 use std::collections::{BTreeMap, HashSet};
@@ -191,7 +191,7 @@ async fn uninstall_core(state: &AppState, id: &str) -> Result<(), String> {
         Err(e) => {
             return Err(format!(
                 "failed to remove the registry entry from disk: {e}"
-            ))
+            ));
         }
     }
     match tokio::fs::remove_file(state.layout.meta_file(id)).await {
@@ -1428,13 +1428,17 @@ mod tests {
         // The project directory stays untouched (unregister ≠ delete the code)
         assert!(project.join("web/dist/entry.js").is_file());
         // Registration and meta removed
-        assert!(registry::load_entry(&state.layout, "devapp")
-            .await
-            .unwrap()
-            .is_none());
-        assert!(config_plane::load_meta(&state.layout, "devapp")
-            .await
-            .is_none());
+        assert!(
+            registry::load_entry(&state.layout, "devapp")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            config_plane::load_meta(&state.layout, "devapp")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1451,9 +1455,11 @@ mod tests {
 
         // Install directory removed + registration cleared (no regression of the existing behavior)
         assert!(!install_dir.exists());
-        assert!(registry::load_entry(&state.layout, "app")
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            registry::load_entry(&state.layout, "app")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }

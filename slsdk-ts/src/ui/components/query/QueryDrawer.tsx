@@ -10,11 +10,16 @@
  *
  * Parent: QueryListToolbar (open/onClose/onApply controlled).
  */
-import { useState, useCallback, useMemo } from 'react';
-import { Button } from '../Button';
-import type { QuerySchema, QueryCondition, QueryFieldSpec, QueryValue } from '../../../dgpqp';
-import type { ReferenceSpec } from '../../types';
-import { QueryConditionRow } from './QueryConditionRow';
+import { useState, useCallback, useMemo } from "react";
+import { Button } from "../Button";
+import type {
+  QuerySchema,
+  QueryCondition,
+  QueryFieldSpec,
+  QueryValue,
+} from "../../../dgpqp";
+import type { ReferenceSpec } from "../../types";
+import { QueryConditionRow } from "./QueryConditionRow";
 
 export interface QueryDrawerProps {
   querySchema: QuerySchema;
@@ -27,22 +32,22 @@ export interface QueryDrawerProps {
 
 // Build the default QueryValue for an operator
 function defaultValue(operator: string): QueryValue {
-  if (operator === 'between') {
-    return { type: 'range', data: { min: null, max: null } };
+  if (operator === "between") {
+    return { type: "range", data: { min: null, max: null } };
   }
-  if (operator === 'in') {
-    return { type: 'set', data: [] };
+  if (operator === "in") {
+    return { type: "set", data: [] };
   }
-  return { type: 'single', data: null };
+  return { type: "single", data: null };
 }
 
 // Whether a QueryValue is empty (left unfilled)
 function isEmptyValue(value: QueryValue): boolean {
-  if (value.type === 'single') return value.data === null || value.data === '';
-  if (value.type === 'range') {
+  if (value.type === "single") return value.data === null || value.data === "";
+  if (value.type === "range") {
     return value.data.min === null && value.data.max === null;
   }
-  if (value.type === 'set') return value.data.length === 0;
+  if (value.type === "set") return value.data.length === 0;
   return true;
 }
 
@@ -63,7 +68,7 @@ export function QueryDrawer({
   const [values, setValues] = useState<Record<string, QueryValue>>(() => {
     const init: Record<string, QueryValue> = {};
     for (const f of filterableFields) {
-      const op = f.operators[0] ?? 'eq';
+      const op = f.operators[0] ?? "eq";
       init[f.key] = defaultValue(op);
     }
     return init;
@@ -78,7 +83,7 @@ export function QueryDrawer({
   const clearAll = useCallback(() => {
     const next: Record<string, QueryValue> = {};
     for (const f of filterableFields) {
-      const op = f.operators[0] ?? 'eq';
+      const op = f.operators[0] ?? "eq";
       next[f.key] = defaultValue(op);
     }
     setValues(next);
@@ -94,7 +99,7 @@ export function QueryDrawer({
       if (isEmptyValue(value)) continue;
       conditions.push({
         field: f.key,
-        operator: f.operators[0] ?? 'eq',
+        operator: f.operators[0] ?? "eq",
         reversed: false,
         value,
       });
@@ -106,14 +111,14 @@ export function QueryDrawer({
     <>
       {/* Backdrop */}
       <div
-        className={`sl-ui-query-drawer-backdrop${open ? ' sl-ui-query-drawer-backdrop--open' : ''}`}
+        className={`sl-ui-query-drawer-backdrop${open ? " sl-ui-query-drawer-backdrop--open" : ""}`}
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Drawer body */}
       <div
-        className={`sl-ui-query-drawer${open ? ' sl-ui-query-drawer--open' : ''}`}
+        className={`sl-ui-query-drawer${open ? " sl-ui-query-drawer--open" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label="高级筛选"
@@ -135,7 +140,7 @@ export function QueryDrawer({
         {/* Body: iterate schema.fields (excluding defaultField) to render all conditions */}
         <div className="sl-ui-query-drawer-body">
           {filterableFields.map((f) => {
-            const op = f.operators[0] ?? 'eq';
+            const op = f.operators[0] ?? "eq";
             const value = values[f.key] ?? defaultValue(op);
             const condition: QueryCondition = {
               field: f.key,

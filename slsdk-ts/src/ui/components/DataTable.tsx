@@ -6,30 +6,38 @@
  * th/td carry explicit class names (sl-ui-data-table-th/td) — the CSS contract requires eliminating
  * "table-container-class + bare element" descendant selectors; every semantic node gets a single class.
  */
-import type { ReactNode } from 'react';
-import { formatDateTime } from '../utils/datetime';
+import type { ReactNode } from "react";
+import { formatDateTime } from "../utils/datetime";
 
-const DATETIME_KEYS = new Set(['createdAt', 'updatedAt']);
+const DATETIME_KEYS = new Set(["createdAt", "updatedAt"]);
 
-export interface DataTableColumn<T extends Record<string, unknown> = Record<string, unknown>> {
+export interface DataTableColumn<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> {
   key: string;
   label: string;
   sortable?: boolean;
   render?: (value: unknown, row: T) => ReactNode;
 }
 
-export interface DataTableProps<T extends Record<string, unknown> = Record<string, unknown>> {
+export interface DataTableProps<
+  T extends Record<string, unknown> = Record<string, unknown>,
+> {
   columns: DataTableColumn<T>[];
   rows: T[];
   sortKey?: string;
-  sortDir?: 'asc' | 'desc';
+  sortDir?: "asc" | "desc";
   onSort?: (key: string) => void;
   emptyMessage?: string;
 }
 
-function SortIcon({ active, dir }: { active: boolean; dir?: 'asc' | 'desc' }) {
+function SortIcon({ active, dir }: { active: boolean; dir?: "asc" | "desc" }) {
   if (!active) return <span className="sl-ui-sort-icon">⇅</span>;
-  return <span className="sl-ui-sort-icon sl-ui-sort-icon--active">{dir === 'asc' ? '↑' : '↓'}</span>;
+  return (
+    <span className="sl-ui-sort-icon sl-ui-sort-icon--active">
+      {dir === "asc" ? "↑" : "↓"}
+    </span>
+  );
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -40,7 +48,7 @@ export function DataTable<T extends Record<string, unknown>>({
   onSort,
   emptyMessage,
 }: DataTableProps<T>) {
-  const finalEmptyMessage = emptyMessage ?? '暂无数据';
+  const finalEmptyMessage = emptyMessage ?? "暂无数据";
   return (
     <div className="sl-ui-data-table-wrapper">
       <table className="sl-ui-data-table">
@@ -49,12 +57,17 @@ export function DataTable<T extends Record<string, unknown>>({
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`sl-ui-data-table-th${col.sortable ? ' sl-ui-data-table-th--sortable' : ''}`}
-                onClick={col.sortable && onSort ? () => onSort(col.key) : undefined}
+                className={`sl-ui-data-table-th${col.sortable ? " sl-ui-data-table-th--sortable" : ""}`}
+                onClick={
+                  col.sortable && onSort ? () => onSort(col.key) : undefined
+                }
               >
                 {col.label}
                 {col.sortable && (
-                  <SortIcon active={sortKey === col.key} dir={sortKey === col.key ? sortDir : undefined} />
+                  <SortIcon
+                    active={sortKey === col.key}
+                    dir={sortKey === col.key ? sortDir : undefined}
+                  />
                 )}
               </th>
             ))}
@@ -66,7 +79,11 @@ export function DataTable<T extends Record<string, unknown>>({
               <td
                 className="sl-ui-data-table-td"
                 colSpan={columns.length}
-                style={{ textAlign: 'center', color: 'var(--sl-ui-color-text-muted)', padding: '24px' }}
+                style={{
+                  textAlign: "center",
+                  color: "var(--sl-ui-color-text-muted)",
+                  padding: "24px",
+                }}
               >
                 {finalEmptyMessage}
               </td>
@@ -79,8 +96,10 @@ export function DataTable<T extends Record<string, unknown>>({
                     {col.render
                       ? col.render(row[col.key], row)
                       : DATETIME_KEYS.has(col.key)
-                        ? formatDateTime(row[col.key] as string | null | undefined)
-                        : String(row[col.key] ?? '')}
+                        ? formatDateTime(
+                            row[col.key] as string | null | undefined,
+                          )
+                        : String(row[col.key] ?? "")}
                   </td>
                 ))}
               </tr>

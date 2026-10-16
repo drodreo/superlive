@@ -28,15 +28,15 @@
 
 :root {
   /* Theme colors (superlive design system v2: mint green / sky blue) */
-  --sl-ui-color-primary: #10b981;      /* mint green */
-  --sl-ui-color-secondary: #0ea5e9;    /* sky blue */
-  --sl-ui-color-error: #ef4444;        /* coral red */
-  --sl-ui-color-primary-strong: #059669;   /* hover/solid deepen of primary */
+  --sl-ui-color-primary: #10b981; /* mint green */
+  --sl-ui-color-secondary: #0ea5e9; /* sky blue */
+  --sl-ui-color-error: #ef4444; /* coral red */
+  --sl-ui-color-primary-strong: #059669; /* hover/solid deepen of primary */
   --sl-ui-color-secondary-strong: #0284c7; /* hover/solid deepen of secondary */
-  --sl-ui-color-error-strong: #dc2626;     /* hover/solid deepen of error */
+  --sl-ui-color-error-strong: #dc2626; /* hover/solid deepen of error */
 
   /* Neutrals */
-  --sl-ui-color-bg-primary: #fefce8;   /* warm white */
+  --sl-ui-color-bg-primary: #fefce8; /* warm white */
   --sl-ui-color-bg-secondary: #f1f5f9;
   --sl-ui-color-bg-tertiary: #e2e8f0;
   --sl-ui-color-border: rgba(203, 213, 225, 0.5);
@@ -67,8 +67,10 @@
   --sl-ui-transition-base: 200ms ease-in-out;
 
   /* Fonts */
-  --sl-ui-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --sl-ui-font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+  --sl-ui-font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+    sans-serif;
+  --sl-ui-font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
 
   /* Button sizes (Button design tokens) */
   --sl-ui-btn-radius: 6px;
@@ -191,8 +193,12 @@
 }
 
 @keyframes sl-ui-btn-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .sl-ui-btn--primary {
@@ -470,7 +476,10 @@
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: var(--sl-ui-radius-md);
   padding: var(--sl-ui-space-2) var(--sl-ui-space-3);
-  transition: border-color var(--sl-ui-transition-fast), box-shadow var(--sl-ui-transition-fast), background var(--sl-ui-transition-fast);
+  transition:
+    border-color var(--sl-ui-transition-fast),
+    box-shadow var(--sl-ui-transition-fast),
+    background var(--sl-ui-transition-fast);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -548,7 +557,10 @@
   border: 1px solid var(--sl-ui-color-border);
   border-radius: var(--sl-ui-radius-md);
   overflow: hidden;
-  transition: border-color var(--sl-ui-transition-fast), box-shadow var(--sl-ui-transition-fast), background var(--sl-ui-transition-fast);
+  transition:
+    border-color var(--sl-ui-transition-fast),
+    box-shadow var(--sl-ui-transition-fast),
+    background var(--sl-ui-transition-fast);
   flex: 1;
   min-width: 0;
 }
@@ -591,7 +603,9 @@
   border: none;
   color: var(--sl-ui-color-text-secondary);
   cursor: pointer;
-  transition: background var(--sl-ui-transition-fast), color var(--sl-ui-transition-fast);
+  transition:
+    background var(--sl-ui-transition-fast),
+    color var(--sl-ui-transition-fast);
   flex-shrink: 0;
 }
 
@@ -710,7 +724,7 @@
 }
 
 .sl-ui-form-label--required::after {
-  content: ' *';
+  content: " *";
   color: var(--sl-ui-color-error);
 }
 
@@ -757,7 +771,10 @@
   border: 1px solid var(--sl-ui-color-border);
   border-radius: var(--sl-ui-radius-sm);
   outline: none;
-  transition: border-color var(--sl-ui-transition-fast), box-shadow var(--sl-ui-transition-fast), background var(--sl-ui-transition-fast);
+  transition:
+    border-color var(--sl-ui-transition-fast),
+    box-shadow var(--sl-ui-transition-fast),
+    background var(--sl-ui-transition-fast);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -977,8 +994,16 @@
   animation: sl-ui-spin 0.8s linear infinite;
 }
 
-.sl-ui-loading-spinner--sm { width: 24px; height: 24px; border-width: 2px; }
-.sl-ui-loading-spinner--lg { width: 56px; height: 56px; border-width: 4px; }
+.sl-ui-loading-spinner--sm {
+  width: 24px;
+  height: 24px;
+  border-width: 2px;
+}
+.sl-ui-loading-spinner--lg {
+  width: 56px;
+  height: 56px;
+  border-width: 4px;
+}
 
 .sl-ui-loading-message {
   font-size: 14px;
@@ -1362,15 +1387,27 @@
 /* ===== keyframes (the sl-ui- prefix guards against host name collisions) ===== */
 
 @keyframes sl-ui-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes sl-ui-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes sl-ui-slide-up {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

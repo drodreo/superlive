@@ -12,10 +12,10 @@
  * - "Deleted" filtering: when the filter produced by QueryListToolbar's onFilterChange lacks
  *   includeDeleted, this factory defaults it to false (semantics aligned with the original setListFilter)
  */
-import { useState, useEffect, useCallback } from 'react';
-import type { Observable } from 'rxjs';
-import type { BatchResult, SearchResponse } from '../types';
-import type { QueryPagination } from '../../dgpqp';
+import { useState, useEffect, useCallback } from "react";
+import type { Observable } from "rxjs";
+import type { BatchResult, SearchResponse } from "../types";
+import type { QueryPagination } from "../../dgpqp";
 
 /** Page size for list pages */
 export const DEFAULT_PAGE_SIZE = 20;
@@ -142,6 +142,18 @@ export function createEntityHook<T, F extends object>(
       setPageState(p);
     }, []);
 
-    return { items, total, page, loading, error, refresh, setFilter, setPage, add, update, remove };
+    return {
+      items,
+      total,
+      page,
+      loading,
+      error,
+      refresh,
+      setFilter,
+      setPage,
+      add,
+      update,
+      remove,
+    };
   };
 }

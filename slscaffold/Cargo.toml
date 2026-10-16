@@ -1,7 +1,8 @@
 [package]
 name = "slscaffold"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 description = "superlive component project scaffolding: renders the standard component skeleton (server / web / build script) in three shapes from embedded templates"
 
 [dependencies]

@@ -14,7 +14,7 @@
 use crate::AppState;
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{header::AUTHORIZATION, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri, header::AUTHORIZATION};
 use axum::response::{IntoResponse, Json, Response};
 use hyper::rt::{Read, Write};
 use hyper_util::rt::TokioIo;
@@ -307,7 +307,7 @@ pub async fn gateway_handler(State(state): State<Arc<AppState>>, req: Request) -
             return error_response(
                 StatusCode::BAD_GATEWAY,
                 &format!("failed to build the forwarding path: {e}"),
-            )
+            );
         }
     };
     strip_hop_headers(&mut parts.headers, is_ws);
@@ -319,7 +319,7 @@ pub async fn gateway_handler(State(state): State<Arc<AppState>>, req: Request) -
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("failed to build the component token header: {e}"),
-            )
+            );
         }
     }
     let forward_req = hyper::Request::from_parts(parts, body);
@@ -462,11 +462,11 @@ mod tests {
     use super::*;
     use crate::auth::generate_token;
     use crate::registry::RunningComponent;
+    use axum::Router;
     use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
     use axum::routing::{get, post};
-    use axum::Router;
     use std::path::Path;
-    use tokio::sync::{watch, Mutex};
+    use tokio::sync::{Mutex, watch};
     use tower::ServiceExt;
 
     fn test_manifest() -> slsdk_rs::ComponentManifest {

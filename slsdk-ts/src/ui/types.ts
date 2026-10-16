@@ -46,8 +46,8 @@ export interface ReferenceOption {
  *   when absent, the facility skips echo resolution and the dropdown only shows options matches)
  */
 export interface ReferenceSpec {
-  search(keyword: string): import('rxjs').Observable<ReferenceOption[]>;
-  byId?(id: string): import('rxjs').Observable<ReferenceOption | undefined>;
+  search(keyword: string): import("rxjs").Observable<ReferenceOption[]>;
+  byId?(id: string): import("rxjs").Observable<ReferenceOption | undefined>;
 }
 
 // ===== file-tier probe injection (the file-tier backfill contract in architecture.md) =====

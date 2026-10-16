@@ -14,7 +14,7 @@
 // Field keys are wire protocol names (camelCase, matching the core-side ColumnResolver match strings),
 // labels are display copy (hardcoded Chinese).
 
-import type { QueryOperator } from './operator';
+import type { QueryOperator } from "./operator";
 
 export interface QuerySchema {
   fields: QueryFieldSpec[];
@@ -25,7 +25,7 @@ export interface QueryFieldSpec {
   key: string;
   label: string;
   /** Field type: decides how values are parsed and which input control renders */
-  type: 'string' | 'number' | 'datetime' | 'boolean' | 'enum' | 'reference';
+  type: "string" | "number" | "datetime" | "boolean" | "enum" | "reference";
   /** The operator subset this field supports, decided by the schema author (the drawer presets operators[0]) */
   operators: QueryOperator[];
   /** Enum candidate values when type='enum' */

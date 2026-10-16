@@ -8,12 +8,12 @@
 //! - `/comps/{id}/*` component UI static (no token: scripts/dynamic imports
 //!   cannot carry custom headers)
 
+use crate::AppState;
 use crate::auth;
 use crate::config::SHELL_PORT;
 use crate::gateway;
-use crate::AppState;
 use axum::extract::{Request, State};
-use axum::http::{header, HeaderValue, Method, StatusCode};
+use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
@@ -211,11 +211,11 @@ pub async fn run(state: AppState) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::RunningComponent;
     use crate::AppState;
+    use crate::registry::RunningComponent;
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::{header::AUTHORIZATION, StatusCode};
+    use axum::http::{StatusCode, header::AUTHORIZATION};
     use tokio::sync::watch;
     use tower::ServiceExt;
 

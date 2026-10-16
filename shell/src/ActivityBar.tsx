@@ -2,13 +2,13 @@
 // (not by components). Left/right symmetric zones: current module title /
 // live date-time / theme toggle.
 
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
-export type Theme = 'light' | 'dark';
+export type Theme = "light" | "dark";
 
 function formatClock(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, '0');
+  const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
@@ -36,7 +36,7 @@ export function ActivityBar({
       <div className="activity-center">{formatClock(now)}</div>
       <div className="activity-right">
         <button type="button" onClick={onToggleTheme}>
-          {theme === 'light' ? t('theme.toDark') : t('theme.toLight')}
+          {theme === "light" ? t("theme.toDark") : t("theme.toLight")}
         </button>
       </div>
     </header>

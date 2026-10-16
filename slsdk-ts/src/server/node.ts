@@ -111,7 +111,11 @@ export function serveNode(
       return { endpoint: { kind: "uds", path: actual }, shutdown, wait };
     }
     const info = address as { address: string; port: number };
-    const actual: Endpoint = { kind: "tcp", host: info.address, port: info.port };
+    const actual: Endpoint = {
+      kind: "tcp",
+      host: info.address,
+      port: info.port,
+    };
     return { endpoint: actual, port: info.port, shutdown, wait };
   })();
 
@@ -163,8 +167,15 @@ function toRequest(req: IncomingMessage): Request {
   }
   const method = req.method ?? "GET";
   const hasBody = method !== "GET" && method !== "HEAD";
-  const body = hasBody ? (Readable.toWeb(req) as unknown as ReadableStream) : null;
-  const init = { method, headers, body, duplex: "half" } as unknown as RequestInit;
+  const body = hasBody
+    ? (Readable.toWeb(req) as unknown as ReadableStream)
+    : null;
+  const init = {
+    method,
+    headers,
+    body,
+    duplex: "half",
+  } as unknown as RequestInit;
   return new Request(url, init);
 }
 
@@ -194,7 +205,9 @@ async function bridge(
     res.end();
     return;
   }
-  const stream = Readable.fromWeb(response.body as unknown as import("node:stream/web").ReadableStream);
+  const stream = Readable.fromWeb(
+    response.body as unknown as import("node:stream/web").ReadableStream,
+  );
   stream.on("error", () => {
     // Client went away mid-body or the handler stream errored: tear the connection down
     res.destroy();

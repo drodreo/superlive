@@ -15,8 +15,8 @@
  * drawer reference tier). Paging/filtering semantics are owned by the spec.search implementation (contract:
  * search(keyword) returns one page of ReferenceOption[]).
  */
-import { useEffect, useRef, useState } from 'react';
-import type { ReferenceOption, ReferenceSpec } from '../types';
+import { useEffect, useRef, useState } from "react";
+import type { ReferenceOption, ReferenceSpec } from "../types";
 
 const DEFAULT_SEARCH_DEBOUNCE_MS = 300;
 
@@ -47,7 +47,7 @@ export function useReferenceOptions(
     if (!spec) {
       // spec not registered (schema misconfigured or the consumer forgot to inject) — warn in dev mode, clear instead of fabricating
       console.warn(
-        '[sl-ui] no ReferenceSpec injected for the reference kind (miss in the references registry) — clearing the dropdown',
+        "[sl-ui] no ReferenceSpec injected for the reference kind (miss in the references registry) — clearing the dropdown",
       );
       setOptions([]);
       setLoading(false);
@@ -68,7 +68,7 @@ export function useReferenceOptions(
       error: (e: unknown) => {
         if (!cancelledRef.current) {
           const err = e as { detail?: string; message?: string } | null;
-          setError(err?.detail ?? err?.message ?? '加载失败');
+          setError(err?.detail ?? err?.message ?? "加载失败");
           setLoading(false);
         }
       },
@@ -135,7 +135,10 @@ export function useReferenceOptionById(
 }
 
 /** Minimal debounce hook (same-origin implementation as the CRUD list page search debounce) */
-function useDebouncedValue<T>(value: T, delay: number = DEFAULT_SEARCH_DEBOUNCE_MS): T {
+function useDebouncedValue<T>(
+  value: T,
+  delay: number = DEFAULT_SEARCH_DEBOUNCE_MS,
+): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(value), delay);

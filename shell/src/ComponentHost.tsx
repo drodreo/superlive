@@ -10,11 +10,11 @@
 // module-tier load and render failures are caught by the error boundary and
 // do not take the shell down.
 
-import React, { lazy, useMemo, Suspense } from 'react';
-import type { ComponentType } from 'react';
-import { useTranslation } from 'react-i18next';
-import { componentAssetUrl, type ComponentInfo } from './api';
-import i18n from './i18n';
+import React, { lazy, useMemo, Suspense } from "react";
+import type { ComponentType } from "react";
+import { useTranslation } from "react-i18next";
+import { componentAssetUrl, type ComponentInfo } from "./api";
+import i18n from "./i18n";
 
 /** The minimal props contract a module-tier component receives: the shell route path passed through verbatim, consumed at the component's own discretion. */
 export interface ComponentModuleProps {
@@ -35,7 +35,7 @@ class ComponentErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error) {
-    console.error('[ComponentHost] component render failed:', error);
+    console.error("[ComponentHost] component render failed:", error);
   }
 
   render() {
@@ -45,7 +45,7 @@ class ComponentErrorBoundary extends React.Component<
       // this boundary and retranslates
       return (
         <div className="comp-error">
-          {i18n.t('host.renderFailed', { error: this.state.error.message })}
+          {i18n.t("host.renderFailed", { error: this.state.error.message })}
         </div>
       );
     }
@@ -53,7 +53,13 @@ class ComponentErrorBoundary extends React.Component<
   }
 }
 
-export function ComponentHost({ info, route }: { info: ComponentInfo; route: string }) {
+export function ComponentHost({
+  info,
+  route,
+}: {
+  info: ComponentInfo;
+  route: string;
+}) {
   const { t } = useTranslation();
   // module tier: dynamically imports the component ESM at runtime.
   // @vite-ignore declares that the URL is only determined at runtime, so
@@ -78,7 +84,9 @@ export function ComponentHost({ info, route }: { info: ComponentInfo; route: str
           /* @vite-ignore */ componentAssetUrl(info.id, entry)
         )) as { default: ModuleComponent };
         if (!mod?.default) {
-          throw new Error(`Component entry is missing a default export (${info.id}/${entry})`);
+          throw new Error(
+            `Component entry is missing a default export (${info.id}/${entry})`,
+          );
         }
         return { default: mod.default };
       }),
@@ -94,7 +102,7 @@ export function ComponentHost({ info, route }: { info: ComponentInfo; route: str
 
   // iframe tier: the static entry mounted directly. src is the full address
   // (the shell webview origin is cross-origin to 39876).
-  if (info.ui.ui_type === 'iframe') {
+  if (info.ui.ui_type === "iframe") {
     return (
       <iframe
         className="comp-frame"
@@ -106,7 +114,9 @@ export function ComponentHost({ info, route }: { info: ComponentInfo; route: str
 
   return (
     <ComponentErrorBoundary>
-      <Suspense fallback={<div className="comp-loading">{t('host.loading')}</div>}>
+      <Suspense
+        fallback={<div className="comp-loading">{t("host.loading")}</div>}
+      >
         <LazyModule route={route} />
       </Suspense>
     </ComponentErrorBoundary>

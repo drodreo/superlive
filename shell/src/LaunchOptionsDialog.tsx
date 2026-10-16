@@ -7,12 +7,12 @@
 // leaving the lifecycle main flow untouched (install → config gate → launch
 // options → start).
 
-import { useState } from 'react';
-import { firstValueFrom } from 'rxjs';
-import { useTranslation } from 'react-i18next';
-import { setLaunchPolicy, type LaunchPolicy } from './api';
-import { Modal } from './Modal';
-import type { ShellKey } from './i18n';
+import { useState } from "react";
+import { firstValueFrom } from "rxjs";
+import { useTranslation } from "react-i18next";
+import { setLaunchPolicy, type LaunchPolicy } from "./api";
+import { Modal } from "./Modal";
+import type { ShellKey } from "./i18n";
 
 export function LaunchOptionsDialog({
   id,
@@ -27,7 +27,7 @@ export function LaunchOptionsDialog({
 }) {
   const { t } = useTranslation();
   // --- Slot 1: launch policy (component-level, persisted in the shell-side registry, not in the component manifest) ---
-  const [policy, setPolicy] = useState<LaunchPolicy>('auto');
+  const [policy, setPolicy] = useState<LaunchPolicy>("auto");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{
     key: ShellKey;
@@ -43,7 +43,7 @@ export function LaunchOptionsDialog({
       await firstValueFrom(setLaunchPolicy(id, policy));
       onDone();
     } catch (e) {
-      setError({ key: 'launch.policyFailed', params: { error: String(e) } });
+      setError({ key: "launch.policyFailed", params: { error: String(e) } });
     } finally {
       setBusy(false);
     }
@@ -51,38 +51,45 @@ export function LaunchOptionsDialog({
 
   return (
     <Modal
-      title={t('launch.title')}
+      title={t("launch.title")}
       footer={
         <>
           <button type="button" disabled={busy} onClick={onCancel}>
-            {t('launch.later')}
+            {t("launch.later")}
           </button>
-          <button type="button" className="primary" disabled={busy} onClick={() => void confirm()}>
-            {t('launch.saveAndStart')}
+          <button
+            type="button"
+            className="primary"
+            disabled={busy}
+            onClick={() => void confirm()}
+          >
+            {t("launch.saveAndStart")}
           </button>
         </>
       }
     >
-      {error && <div className="message error">{t(error.key, error.params)}</div>}
+      {error && (
+        <div className="message error">{t(error.key, error.params)}</div>
+      )}
       <div className="launch-option">
-        <div className="launch-option-title">{t('launch.policy')}</div>
+        <div className="launch-option-title">{t("launch.policy")}</div>
         <label>
           <input
             type="radio"
             name={`launch-policy-${id}`}
-            checked={policy === 'auto'}
-            onChange={() => setPolicy('auto')}
+            checked={policy === "auto"}
+            onChange={() => setPolicy("auto")}
           />
-          {t('launch.auto')}
+          {t("launch.auto")}
         </label>
         <label>
           <input
             type="radio"
             name={`launch-policy-${id}`}
-            checked={policy === 'manual'}
-            onChange={() => setPolicy('manual')}
+            checked={policy === "manual"}
+            onChange={() => setPolicy("manual")}
           />
-          {t('launch.manual')}
+          {t("launch.manual")}
         </label>
       </div>
       {/* Future launch-options slots: append option sections here (independent state, submitted in order via confirm) */}

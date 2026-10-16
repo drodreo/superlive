@@ -1,7 +1,8 @@
 [package]
 name = "superlive-shell"
 version = "0.2.2"
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 description = "superlive v2 componentized platform shell: registry + unified API gateway + component lifecycle management"
 
 [lib]

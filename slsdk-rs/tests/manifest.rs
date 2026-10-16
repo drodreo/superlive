@@ -4,7 +4,7 @@
 
 use sha2::{Digest, Sha256};
 use slsdk_rs::{
-    verify_files, ComponentManifest, ConfigFieldType, FileEntry, ManifestError, UiType, VerifyError,
+    ComponentManifest, ConfigFieldType, FileEntry, ManifestError, UiType, VerifyError, verify_files,
 };
 use std::path::Path;
 

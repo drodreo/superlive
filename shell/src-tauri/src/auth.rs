@@ -10,7 +10,7 @@
 //! channels, the same scheme as the slsdk-rs component side.
 
 use axum::extract::{Request, State};
-use axum::http::{header::AUTHORIZATION, HeaderValue, StatusCode};
+use axum::http::{HeaderValue, StatusCode, header::AUTHORIZATION};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use rand::RngCore;
@@ -85,9 +85,9 @@ pub async fn require_bearer(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Router;
     use axum::body::Body;
     use axum::routing::get;
-    use axum::Router;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 

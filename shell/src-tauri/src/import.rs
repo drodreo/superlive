@@ -21,11 +21,11 @@
 //! findings surface as `invalid_argument` (the directory's content is the
 //! problem), world-state collisions as `conflict`.
 
+use crate::AppState;
 use crate::commands::{ComponentView, CreateError};
 use crate::config_plane;
 use crate::installer::{parse_semver, shell_version_satisfied};
 use crate::registry::{self, ComponentSource, RegistryEntry};
-use crate::AppState;
 use serde::Serialize;
 use slscaffold::{MissingFile, MissingFilesRequest};
 use slsdk_rs::ComponentManifest;

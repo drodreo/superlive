@@ -55,7 +55,7 @@
   --backdrop: rgba(15, 20, 30, 0.45);
 }
 
-:root[data-theme='dark'] {
+:root[data-theme="dark"] {
   --bg-base: #0d0f14;
   --bg-panel: #1f232b;
   --bg-inset: #272c36;
@@ -104,8 +104,8 @@
    development. Components' custom styles follow the same data-theme
    attribute (their own [data-theme] rules); component-defined variables
    outside --sl-ui-* are the component's own. */
-html[data-theme='light'],
-html[data-theme='dark'] {
+html[data-theme="light"],
+html[data-theme="dark"] {
   --sl-ui-color-primary: var(--accent);
   --sl-ui-color-secondary: var(--info-text);
   --sl-ui-color-error: var(--err-text);
@@ -120,14 +120,14 @@ html[data-theme='dark'] {
 
 /* Solid/hover deepenings and tier neutrals carry literal values (no shell
    token equivalents) */
-html[data-theme='light'] {
+html[data-theme="light"] {
   --sl-ui-color-primary-strong: #2c6fd6;
   --sl-ui-color-secondary-strong: #1a4fa8;
   --sl-ui-color-error-strong: #a81c26;
   --sl-ui-color-bg-tertiary: #e6e9f0;
 }
 
-html[data-theme='dark'] {
+html[data-theme="dark"] {
   --sl-ui-color-primary-strong: #7aa7ff;
   --sl-ui-color-secondary-strong: #a5c4ff;
   --sl-ui-color-error-strong: #ff7a72;
@@ -147,7 +147,13 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
-  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
   color: var(--text);
   /* Shared backdrop: soft programmatic light blobs over a base tone —
      both glass surfaces (sidebar / workspace) frost this same layer. */
@@ -685,10 +691,10 @@ button.link {
   padding: 1px 6px;
 }
 
-.config-field input[type='text'],
-.config-field input[type='password'],
-.config-field input[type='number'],
-.config-field input[type='datetime-local'],
+.config-field input[type="text"],
+.config-field input[type="password"],
+.config-field input[type="number"],
+.config-field input[type="datetime-local"],
 .config-field select {
   width: 100%;
   box-sizing: border-box;
@@ -772,7 +778,7 @@ button.link {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
-:root[data-theme='dark'] .modal {
+:root[data-theme="dark"] .modal {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
@@ -1059,10 +1065,10 @@ button.link {
 /* The dialog's uniform control form: 40px tall, 8px radius, the shared
    border/background variables (overrides the config-field defaults inside
    the dialog; source order puts these after the generic rules) */
-.dlg-fields .config-field input[type='text'],
-.dlg-fields .config-field input[type='password'],
-.dlg-fields .config-field input[type='number'],
-.dlg-fields .config-field input[type='datetime-local'],
+.dlg-fields .config-field input[type="text"],
+.dlg-fields .config-field input[type="password"],
+.dlg-fields .config-field input[type="number"],
+.dlg-fields .config-field input[type="datetime-local"],
 .dlg-fields .config-field select {
   height: 40px;
   border-radius: 8px;

@@ -6,7 +6,7 @@ export class ApiError extends Error {
 
   constructor(message: string, status: number, body: unknown, raw?: Response) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     this.status = status;
     this.body = body;
     this.raw = raw;
@@ -15,10 +15,10 @@ export class ApiError extends Error {
   /** Builds the error from a non-2xx Response; clones an independent stream for parsing, leaving the original body unconsumed */
   static async from(res: Response): Promise<ApiError> {
     let body: unknown;
-    let summary = '';
+    let summary = "";
     try {
       body = await res.clone().json();
-      summary = JSON.stringify(body) ?? '';
+      summary = JSON.stringify(body) ?? "";
     } catch {
       try {
         const text = await res.clone().text();

@@ -9,16 +9,12 @@
  * - references (the reference-tier injection table) passes through to QueryDrawer → QueryConditionRow
  * - pagination is not this component's concern (page is held by the data hook, passed through by CrudListPage)
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { SearchBar } from '../SearchBar';
-import { Select } from '../Select';
-import { QueryDrawer } from './QueryDrawer';
-import type {
-  QuerySchema,
-  QueryCondition,
-  QuerySorting,
-} from '../../../dgpqp';
-import type { ReferenceSpec, SelectOption } from '../../types';
+import { useState, useCallback, useEffect, useRef } from "react";
+import { SearchBar } from "../SearchBar";
+import { Select } from "../Select";
+import { QueryDrawer } from "./QueryDrawer";
+import type { QuerySchema, QueryCondition, QuerySorting } from "../../../dgpqp";
+import type { ReferenceSpec, SelectOption } from "../../types";
 
 export interface QueryListToolbarFilter {
   conditions?: QueryCondition[];
@@ -53,12 +49,14 @@ export function QueryListToolbar({
   defaultIncludeDeleted = false,
   references,
 }: QueryListToolbarProps) {
-  const [searchInput, setSearchInput] = useState('');
-  const [sortField, setSortField] = useState<string>('');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [searchInput, setSearchInput] = useState("");
+  const [sortField, setSortField] = useState<string>("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [includeDeleted] = useState(defaultIncludeDeleted);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerConditions, setDrawerConditions] = useState<QueryCondition[]>([]);
+  const [drawerConditions, setDrawerConditions] = useState<QueryCondition[]>(
+    [],
+  );
 
   // Sort dropdown options (every schema field is sortable;
   // the defaultField may participate in sorting — original behavior)
@@ -92,9 +90,9 @@ export function QueryListToolbar({
       if (searchInput.trim() && querySchema.defaultField) {
         conditions.push({
           field: querySchema.defaultField,
-          operator: 'contains',
+          operator: "contains",
           reversed: false,
-          value: { type: 'single', data: searchInput.trim() },
+          value: { type: "single", data: searchInput.trim() },
         });
       }
       // 3. Drawer conditions
@@ -108,17 +106,24 @@ export function QueryListToolbar({
     return () => {
       if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
     };
-  }, [searchInput, sortField, sortDir, drawerConditions, includeDeleted, querySchema]);
+  }, [
+    searchInput,
+    sortField,
+    sortDir,
+    drawerConditions,
+    includeDeleted,
+    querySchema,
+  ]);
 
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   const handleSortFieldChange = useCallback((field: string | null) => {
-    setSortField(field ?? '');
+    setSortField(field ?? "");
   }, []);
 
   const handleSortDirChange = useCallback((dir: string | null) => {
-    if (dir === 'asc' || dir === 'desc') {
+    if (dir === "asc" || dir === "desc") {
       setSortDir(dir);
     }
   }, []);
@@ -159,8 +164,8 @@ export function QueryListToolbar({
                 value={sortDir}
                 onChange={handleSortDirChange}
                 options={[
-                  { value: 'asc', label: '升序' },
-                  { value: 'desc', label: '降序' },
+                  { value: "asc", label: "升序" },
+                  { value: "desc", label: "降序" },
                 ]}
                 placeholder="方向"
               />

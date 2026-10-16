@@ -6,7 +6,7 @@ export interface InputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  type?: 'text' | 'email' | 'password' | 'number' | 'tel' | 'url';
+  type?: "text" | "email" | "password" | "number" | "tel" | "url";
   disabled?: boolean;
   error?: string;
   id?: string;
@@ -19,7 +19,7 @@ export function Input({
   value,
   onChange,
   placeholder,
-  type = 'text',
+  type = "text",
   disabled,
   error,
   id,
@@ -38,7 +38,7 @@ export function Input({
         placeholder={placeholder}
         disabled={disabled}
         autoComplete={autoComplete}
-        className={`sl-ui-input-field${error ? ' sl-ui-input-field--error' : ''}${className ? ' ' + className : ''}`}
+        className={`sl-ui-input-field${error ? " sl-ui-input-field--error" : ""}${className ? " " + className : ""}`}
       />
     </div>
   );

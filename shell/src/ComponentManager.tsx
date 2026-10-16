@@ -12,11 +12,11 @@
 // after an upgrade completes, display follows the component state naturally
 // (needs-config can fall back from any state).
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { firstValueFrom, type Observable } from 'rxjs';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { ask } from '@tauri-apps/plugin-dialog';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { firstValueFrom, type Observable } from "rxjs";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import {
   getComponentState,
   installComponent,
@@ -26,14 +26,14 @@ import {
   uninstallComponent,
   type ComponentInfo,
   type ComponentState,
-} from './api';
-import { navigate } from './router';
-import { Modal } from './Modal';
-import { LaunchOptionsDialog } from './LaunchOptionsDialog';
-import { CreateComponentDialog } from './CreateComponentDialog';
-import { componentMenuTitle } from './i18n';
-import type { CreateComponentResult } from './api';
-import type { ShellKey } from './i18n';
+} from "./api";
+import { navigate } from "./router";
+import { Modal } from "./Modal";
+import { LaunchOptionsDialog } from "./LaunchOptionsDialog";
+import { CreateComponentDialog } from "./CreateComponentDialog";
+import { componentMenuTitle } from "./i18n";
+import type { CreateComponentResult } from "./api";
+import type { ShellKey } from "./i18n";
 
 /** Message-bar payload: key + params (not a finished string) so an already-shown message retranslates on locale switch. */
 type I18nMessage = { key: ShellKey; params?: Record<string, string | number> };
@@ -47,7 +47,10 @@ type I18nMessage = { key: ShellKey; params?: Record<string, string | number> };
 function displayTitleOf(c: ComponentInfo): string {
   // ?? and || may not be mixed unparenthesized — the ?? chain resolves first,
   // then the || id fallback
-  return ((c.menu ? componentMenuTitle(c.namespace) : null) ?? c.display_name) || c.id;
+  return (
+    ((c.menu ? componentMenuTitle(c.namespace) : null) ?? c.display_name) ||
+    c.id
+  );
 }
 
 export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
@@ -58,7 +61,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   const [states, setStates] = useState<Record<string, ComponentState>>({});
   const [message, setMessage] = useState<I18nMessage | null>(null);
   const [busy, setBusy] = useState(false);
-  const [zipPath, setZipPath] = useState('');
+  const [zipPath, setZipPath] = useState("");
   // Target component id for the post-install "Start now" prompt / the
   // launch options dialog
   const [installPromptId, setInstallPromptId] = useState<string | null>(null);
@@ -90,7 +93,8 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
           setStates(next);
         });
       },
-      error: (e) => setMessage({ key: 'mgr.listFailed', params: { error: String(e) } }),
+      error: (e) =>
+        setMessage({ key: "mgr.listFailed", params: { error: String(e) } }),
     });
     return () => sub.unsubscribe();
   }, []);
@@ -101,14 +105,16 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   // paths, matching the install contract directly
   useEffect(() => {
     const promise = getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type !== 'drop') return;
-      const zip = event.payload.paths.find((p) => p.endsWith('.zip'));
+      if (event.payload.type !== "drop") return;
+      const zip = event.payload.paths.find((p) => p.endsWith(".zip"));
       if (!zip) return;
-      void run(installComponent(zip), 'mgr.installedDrag', { path: zip }).then((info) => {
-        onChanged?.();
-        // Install success → lifecycle wiring step one: show the "Start now" prompt
-        if (info) setInstallPromptId(info.id);
-      });
+      void run(installComponent(zip), "mgr.installedDrag", { path: zip }).then(
+        (info) => {
+          onChanged?.();
+          // Install success → lifecycle wiring step one: show the "Start now" prompt
+          if (info) setInstallPromptId(info.id);
+        },
+      );
     });
     return () => {
       promise.then((unlisten) => unlisten());
@@ -134,7 +140,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
         setMessage({ key: successKey, params: successParams });
         return value;
       } catch (e) {
-        setMessage({ key: 'mgr.actionFailed', params: { error: String(e) } });
+        setMessage({ key: "mgr.actionFailed", params: { error: String(e) } });
         return undefined;
       } finally {
         busyRef.current = false;
@@ -153,8 +159,8 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   const installByPath = () => {
     const path = zipPath.trim();
     if (!path) return;
-    void run(installComponent(path), 'mgr.installed', { path }).then((info) => {
-      setZipPath('');
+    void run(installComponent(path), "mgr.installed", { path }).then((info) => {
+      setZipPath("");
       afterChange();
       if (info) setInstallPromptId(info.id);
     });
@@ -162,7 +168,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
 
   /** The component's current four-state: states hit first; missing entries fall back to the running boolean. */
   const stateOf = (c: ComponentInfo): ComponentState =>
-    states[c.id] ?? (c.running ? 'running' : 'stopped');
+    states[c.id] ?? (c.running ? "running" : "stopped");
 
   // Post-install "Start now": the start gate per the lifecycle contract —
   // needs-config is routed to the config page,
@@ -172,13 +178,13 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
     setInstallPromptId(null);
     try {
       const state = await firstValueFrom(getComponentState(id));
-      if (state === 'needs-config') {
+      if (state === "needs-config") {
         navigate(`/config/${id}`);
       } else {
         setLaunchDialogId(id);
       }
     } catch (e) {
-      setMessage({ key: 'mgr.stateReadFailed', params: { error: String(e) } });
+      setMessage({ key: "mgr.stateReadFailed", params: { error: String(e) } });
     }
   };
 
@@ -187,9 +193,9 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
     setLaunchDialogId(null);
     try {
       await firstValueFrom(startComponent(id));
-      setMessage({ key: 'mgr.started', params: { id } });
+      setMessage({ key: "mgr.started", params: { id } });
     } catch (e) {
-      setMessage({ key: 'mgr.startFailed', params: { error: String(e) } });
+      setMessage({ key: "mgr.startFailed", params: { error: String(e) } });
     }
     afterChange();
   };
@@ -199,36 +205,46 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
       <div className="install-bar">
         <input
           type="text"
-          placeholder={t('mgr.installPlaceholder')}
+          placeholder={t("mgr.installPlaceholder")}
           value={zipPath}
           onChange={(e) => setZipPath(e.target.value)}
         />
-        <button type="button" disabled={busy || !zipPath.trim()} onClick={installByPath}>
-          {t('mgr.install')}
+        <button
+          type="button"
+          disabled={busy || !zipPath.trim()}
+          onClick={installByPath}
+        >
+          {t("mgr.install")}
         </button>
-        <button type="button" className="secondary" onClick={() => setCreateOpen(true)}>
-          {t('mgr.create')}
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setCreateOpen(true)}
+        >
+          {t("mgr.create")}
         </button>
       </div>
 
-      {message && <div className="message">{t(message.key, message.params)}</div>}
+      {message && (
+        <div className="message">{t(message.key, message.params)}</div>
+      )}
 
       <table className="comp-table">
         <thead>
           <tr>
-            <th>{t('table.component')}</th>
-            <th>{t('table.version')}</th>
-            <th>{t('table.namespace')}</th>
-            <th>{t('table.ui')}</th>
-            <th>{t('table.state')}</th>
-            <th>{t('table.actions')}</th>
+            <th>{t("table.component")}</th>
+            <th>{t("table.version")}</th>
+            <th>{t("table.namespace")}</th>
+            <th>{t("table.ui")}</th>
+            <th>{t("table.state")}</th>
+            <th>{t("table.actions")}</th>
           </tr>
         </thead>
         <tbody>
           {components.length === 0 && (
             <tr>
               <td colSpan={6} className="empty">
-                {t('mgr.empty')}
+                {t("mgr.empty")}
               </td>
             </tr>
           )}
@@ -240,7 +256,9 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                   <div className="comp-name">
                     {displayTitleOf(c)}
                     {/* dev = created in place, body stays in the project dir (vs installed packages) */}
-                    {c.source === 'dev' && <span className="badge badge-dev">dev</span>}
+                    {c.source === "dev" && (
+                      <span className="badge badge-dev">dev</span>
+                    )}
                   </div>
                   {c.project_dir && (
                     <div className="comp-project-dir" title={c.project_dir}>
@@ -252,17 +270,19 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                 <td>{c.namespace}</td>
                 <td>{c.ui?.ui_type}</td>
                 <td>
-                  <span className={`badge badge-${state}`}>{t(`state.${state}`)}</span>
+                  <span className={`badge badge-${state}`}>
+                    {t(`state.${state}`)}
+                  </span>
                 </td>
                 <td>
-                  {state === 'needs-config' ? (
+                  {state === "needs-config" ? (
                     // Start gate: no starting with required config missing; guide to the config page
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => navigate(`/config/${c.id}`)}
                     >
-                      {t('mgr.goConfig')}
+                      {t("mgr.goConfig")}
                     </button>
                   ) : (
                     <>
@@ -272,19 +292,19 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                         disabled={busy}
                         onClick={() => navigate(`/config/${c.id}`)}
                       >
-                        {t('mgr.configure')}
-                      </button>{' '}
-                      {state === 'running' ? (
+                        {t("mgr.configure")}
+                      </button>{" "}
+                      {state === "running" ? (
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            void run(stopComponent(c.id), 'mgr.stopRequested', { id: c.id }).then(
-                              afterChange,
-                            )
+                            void run(stopComponent(c.id), "mgr.stopRequested", {
+                              id: c.id,
+                            }).then(afterChange)
                           }
                         >
-                          {t('mgr.stop')}
+                          {t("mgr.stop")}
                         </button>
                       ) : (
                         // ready / stopped: manual start
@@ -292,12 +312,12 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            void run(startComponent(c.id), 'mgr.started', { id: c.id }).then(
-                              afterChange,
-                            )
+                            void run(startComponent(c.id), "mgr.started", {
+                              id: c.id,
+                            }).then(afterChange)
                           }
                         >
-                          {t('mgr.start')}
+                          {t("mgr.start")}
                         </button>
                       )}
                     </>
@@ -308,7 +328,9 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                     disabled={busy}
                     onClick={async () => {
                       const confirmKey =
-                        c.source === 'dev' ? 'mgr.uninstallConfirmDev' : 'mgr.uninstallConfirm';
+                        c.source === "dev"
+                          ? "mgr.uninstallConfirmDev"
+                          : "mgr.uninstallConfirm";
                       // window.confirm is not reliable in the tauri webview
                       // (it shows a GTK dialog but returns immediately without
                       // blocking — the uninstall used to run before the user
@@ -316,12 +338,12 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                       // plugin's ask() is a proper awaited promise.
                       const ok = await ask(t(confirmKey, { id: c.id }));
                       if (!ok) return;
-                      void run(uninstallComponent(c.id), 'mgr.uninstalled', { id: c.id }).then(
-                        afterChange,
-                      );
+                      void run(uninstallComponent(c.id), "mgr.uninstalled", {
+                        id: c.id,
+                      }).then(afterChange);
                     }}
                   >
-                    {t('mgr.uninstall')}
+                    {t("mgr.uninstall")}
                   </button>
                 </td>
               </tr>
@@ -333,11 +355,15 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
       {/* Install complete → "Start now" prompt (lifecycle wiring step one) */}
       {installPromptId && (
         <Modal
-          title={t('mgr.installedTitle')}
+          title={t("mgr.installedTitle")}
           footer={
             <>
-              <button type="button" disabled={busy} onClick={() => setInstallPromptId(null)}>
-                {t('mgr.later')}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setInstallPromptId(null)}
+              >
+                {t("mgr.later")}
               </button>
               <button
                 type="button"
@@ -345,17 +371,18 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                 disabled={busy}
                 onClick={() => void beginLaunchFlow(installPromptId)}
               >
-                {t('mgr.startNow')}
+                {t("mgr.startNow")}
               </button>
             </>
           }
         >
           <p>
-            {t('mgr.installedPrompt', {
+            {t("mgr.installedPrompt", {
               // Fallback surface: display_name is the assembly-time product of
               // the titles chain (zh → en → first row) — contract-compliant
               name:
-                components.find((c) => c.id === installPromptId)?.display_name ?? installPromptId,
+                components.find((c) => c.id === installPromptId)
+                  ?.display_name ?? installPromptId,
             })}
           </p>
         </Modal>
@@ -386,20 +413,28 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
           backend/frontend commands are already shape-trimmed by the scaffold) */}
       {created && (
         <Modal
-          title={t('done.title')}
+          title={t("done.title")}
           footer={
-            <button type="button" className="primary" onClick={() => setCreated(null)}>
-              {t('done.close')}
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setCreated(null)}
+            >
+              {t("done.close")}
             </button>
           }
         >
-          <p>{t('done.intro', { name: created.component.display_name || created.component.id })}</p>
+          <p>
+            {t("done.intro", {
+              name: created.component.display_name || created.component.id,
+            })}
+          </p>
           <div className="done-section">
-            <div className="done-label">{t('done.projectDir')}</div>
+            <div className="done-label">{t("done.projectDir")}</div>
             <div className="done-path">{created.project_dir}</div>
           </div>
           <div className="done-section">
-            <div className="done-label">{t('done.nextSteps')}</div>
+            <div className="done-label">{t("done.nextSteps")}</div>
             <ol className="done-steps">
               {created.next_steps.map((step) => (
                 <li key={step}>
@@ -408,7 +443,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
               ))}
             </ol>
           </div>
-          <p className="done-note">{t('done.locationNote')}</p>
+          <p className="done-note">{t("done.locationNote")}</p>
         </Modal>
       )}
     </section>

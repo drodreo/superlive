@@ -1,0 +1,5 @@
+# Pin the toolchain so rustfmt/clippy behavior cannot drift across machines.
+# Bump the channel here when upgrading — this file is the single source of truth.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

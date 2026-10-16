@@ -12,11 +12,15 @@
  *   the boolean tier has no dedicated branch — the original QueryConditionRow likewise falls to the default TextInput
  *   (wire value as string), behavior aligned
  */
-import type { QueryCondition, QueryFieldSpec, QuerySingleValue } from '../../../dgpqp';
-import type { ReferenceSpec } from '../../types';
-import { TextInput, NumberInput, RangePicker } from './QueryInputs';
-import { Select } from '../Select';
-import { useReferenceOptions } from '../../hooks/useReferenceOptions';
+import type {
+  QueryCondition,
+  QueryFieldSpec,
+  QuerySingleValue,
+} from "../../../dgpqp";
+import type { ReferenceSpec } from "../../types";
+import { TextInput, NumberInput, RangePicker } from "./QueryInputs";
+import { Select } from "../Select";
+import { useReferenceOptions } from "../../hooks/useReferenceOptions";
 
 export interface QueryConditionRowProps {
   condition: QueryCondition;
@@ -38,18 +42,25 @@ function EnumOrReferenceInput({
   value: string;
   onChange: (v: string) => void;
 }) {
-  if (fieldSpec.type === 'enum') {
+  if (fieldSpec.type === "enum") {
     return (
       <Select
         value={value || null}
-        onChange={(v) => onChange(v ?? '')}
-        options={(fieldSpec.enumValues ?? []).map((opt) => ({ value: opt, label: opt }))}
+        onChange={(v) => onChange(v ?? "")}
+        options={(fieldSpec.enumValues ?? []).map((opt) => ({
+          value: opt,
+          label: opt,
+        }))}
         placeholder="请选择..."
       />
     );
   }
-  const spec = fieldSpec.reference ? references?.[fieldSpec.reference.entity] : undefined;
-  return <ReferenceConditionInput spec={spec} value={value} onChange={onChange} />;
+  const spec = fieldSpec.reference
+    ? references?.[fieldSpec.reference.entity]
+    : undefined;
+  return (
+    <ReferenceConditionInput spec={spec} value={value} onChange={onChange} />
+  );
 }
 
 /**
@@ -66,18 +77,22 @@ function ReferenceConditionInput({
   value: string;
   onChange: (v: string) => void;
 }) {
-  const { options, loading, error } = useReferenceOptions(spec, '');
+  const { options, loading, error } = useReferenceOptions(spec, "");
   return (
     <div className="sl-ui-reference-field">
       <Select
         value={value || null}
-        onChange={(v) => onChange(v ?? '')}
+        onChange={(v) => onChange(v ?? "")}
         options={options}
         placeholder="请选择..."
         disabled={loading}
       />
       {loading && <span className="sl-ui-reference-field-status">加载中…</span>}
-      {!loading && error && <span className="sl-ui-reference-field-status sl-ui-reference-field-status--error">{error}</span>}
+      {!loading && error && (
+        <span className="sl-ui-reference-field-status sl-ui-reference-field-status--error">
+          {error}
+        </span>
+      )}
     </div>
   );
 }
@@ -93,42 +108,59 @@ export function QueryConditionRow({
     const { operator, value } = condition;
 
     // single value
-    if (value.type === 'single') {
+    if (value.type === "single") {
       const singleValue = value.data ?? null;
 
       // string + contains / eq → TextInput
-      if (fieldSpec.type === 'string' && (operator === 'contains' || operator === 'eq')) {
+      if (
+        fieldSpec.type === "string" &&
+        (operator === "contains" || operator === "eq")
+      ) {
         return (
           <TextInput
-            value={(singleValue as string) ?? ''}
-            onChange={(v) => onChange({ ...condition, value: { type: 'single', data: v } })}
+            value={(singleValue as string) ?? ""}
+            onChange={(v) =>
+              onChange({ ...condition, value: { type: "single", data: v } })
+            }
             placeholder="筛选值…"
           />
         );
       }
 
       // number + eq / lt / gt / lte / gte → NumberInput
-      if (fieldSpec.type === 'number' && ['eq', 'lt', 'gt', 'lte', 'gte'].includes(operator)) {
+      if (
+        fieldSpec.type === "number" &&
+        ["eq", "lt", "gt", "lte", "gte"].includes(operator)
+      ) {
         return (
           <NumberInput
             value={singleValue as number | null}
-            onChange={(v) => onChange({ ...condition, value: { type: 'single', data: v } })}
+            onChange={(v) =>
+              onChange({ ...condition, value: { type: "single", data: v } })
+            }
           />
         );
       }
 
       // datetime + eq → native datetime-local
-      if (fieldSpec.type === 'datetime' && operator === 'eq') {
+      if (fieldSpec.type === "datetime" && operator === "eq") {
         return (
           <input
             type="datetime-local"
             className="sl-ui-input-field"
-            value={singleValue ? new Date(singleValue as string).toISOString().slice(0, 16) : ''}
+            value={
+              singleValue
+                ? new Date(singleValue as string).toISOString().slice(0, 16)
+                : ""
+            }
             onChange={(e) => {
               const v = e.target.value;
               onChange({
                 ...condition,
-                value: { type: 'single', data: v ? new Date(v).toISOString() : null },
+                value: {
+                  type: "single",
+                  data: v ? new Date(v).toISOString() : null,
+                },
               });
             }}
           />
@@ -136,23 +168,37 @@ export function QueryConditionRow({
       }
 
       // reference + eq → injection-table dropdown; enum + eq → enumValues dropdown
-      if (fieldSpec.type === 'reference' && operator === 'eq' && fieldSpec.reference) {
+      if (
+        fieldSpec.type === "reference" &&
+        operator === "eq" &&
+        fieldSpec.reference
+      ) {
         return (
           <EnumOrReferenceInput
             fieldSpec={fieldSpec}
             references={references}
-            value={(singleValue as string) ?? ''}
-            onChange={(v) => onChange({ ...condition, value: { type: 'single', data: v || null } })}
+            value={(singleValue as string) ?? ""}
+            onChange={(v) =>
+              onChange({
+                ...condition,
+                value: { type: "single", data: v || null },
+              })
+            }
           />
         );
       }
-      if (fieldSpec.type === 'enum' && operator === 'eq') {
+      if (fieldSpec.type === "enum" && operator === "eq") {
         return (
           <EnumOrReferenceInput
             fieldSpec={fieldSpec}
             references={references}
-            value={(singleValue as string) ?? ''}
-            onChange={(v) => onChange({ ...condition, value: { type: 'single', data: v || null } })}
+            value={(singleValue as string) ?? ""}
+            onChange={(v) =>
+              onChange({
+                ...condition,
+                value: { type: "single", data: v || null },
+              })
+            }
           />
         );
       }
@@ -160,14 +206,16 @@ export function QueryConditionRow({
       // default text (the boolean tier also lands here — original behavior)
       return (
         <TextInput
-          value={(singleValue as string) ?? ''}
-          onChange={(v) => onChange({ ...condition, value: { type: 'single', data: v } })}
+          value={(singleValue as string) ?? ""}
+          onChange={(v) =>
+            onChange({ ...condition, value: { type: "single", data: v } })
+          }
         />
       );
     }
 
     // range value (between)
-    if (value.type === 'range') {
+    if (value.type === "range") {
       return (
         <RangePicker
           min={value.data?.min as string | number | undefined}
@@ -176,12 +224,15 @@ export function QueryConditionRow({
             onChange({
               ...condition,
               value: {
-                type: 'range',
-                data: { min: min as QuerySingleValue, max: max as QuerySingleValue },
+                type: "range",
+                data: {
+                  min: min as QuerySingleValue,
+                  max: max as QuerySingleValue,
+                },
               },
             })
           }
-          type={fieldSpec.type === 'datetime' ? 'datetime' : 'number'}
+          type={fieldSpec.type === "datetime" ? "datetime" : "number"}
         />
       );
     }
@@ -193,7 +244,9 @@ export function QueryConditionRow({
   return (
     <div className="sl-ui-query-condition-row">
       {/* Field label (read-only) */}
-      <span className="sl-ui-query-condition-field-label">{fieldSpec.label}</span>
+      <span className="sl-ui-query-condition-field-label">
+        {fieldSpec.label}
+      </span>
 
       {/* Value input (operator preset to fieldSpec.operators[0]) */}
       <div className="sl-ui-query-condition-value">{renderValueInput()}</div>

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createObserve } from '../src/observe';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createObserve } from "../src/observe";
 
 /** Simplified EventTarget mock: implements only the interface surface observe.ts depends on; the serverXxx methods simulate server-side events */
 class MockWebSocket {
@@ -42,7 +42,7 @@ function lastInstance(): MockWebSocket | undefined {
   return MockWebSocket.instances[MockWebSocket.instances.length - 1];
 }
 
-describe('createObserve', () => {
+describe("createObserve", () => {
   beforeEach(() => {
     MockWebSocket.instances = [];
     vi.useFakeTimers();
@@ -52,50 +52,54 @@ describe('createObserve', () => {
     vi.useRealTimers();
   });
 
-  it('URL: http→ws protocol replacement + token via query (cold Observable, connects on subscribe)', () => {
-    const observe = createObserve('http://127.0.0.1:39876/api', 'sec-ret');
-    const sub = observe('/todo/feed', { wsFactory: factory() }).subscribe(() => {});
+  it("URL: http→ws protocol replacement + token via query (cold Observable, connects on subscribe)", () => {
+    const observe = createObserve("http://127.0.0.1:39876/api", "sec-ret");
+    const sub = observe("/todo/feed", { wsFactory: factory() }).subscribe(
+      () => {},
+    );
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0]?.url).toBe(
-      'ws://127.0.0.1:39876/api/todo/feed?token=sec-ret',
+      "ws://127.0.0.1:39876/api/todo/feed?token=sec-ret",
     );
     sub.unsubscribe();
   });
 
-  it('https → wss', () => {
-    const observe = createObserve('https://shell.example.com/api', 't');
-    const sub = observe('/feed', { wsFactory: factory() }).subscribe(() => {});
-    expect(MockWebSocket.instances[0]?.url.startsWith('wss://')).toBe(true);
+  it("https → wss", () => {
+    const observe = createObserve("https://shell.example.com/api", "t");
+    const sub = observe("/feed", { wsFactory: factory() }).subscribe(() => {});
+    expect(MockWebSocket.instances[0]?.url.startsWith("wss://")).toBe(true);
     sub.unsubscribe();
   });
 
-  it('token special characters go through encodeURIComponent', () => {
-    const observe = createObserve('http://x/api', 'a/b?c=d');
-    const sub = observe('/feed', { wsFactory: factory() }).subscribe(() => {});
-    expect(lastInstance()?.url).toBe('ws://x/api/feed?token=a%2Fb%3Fc%3Dd');
+  it("token special characters go through encodeURIComponent", () => {
+    const observe = createObserve("http://x/api", "a/b?c=d");
+    const sub = observe("/feed", { wsFactory: factory() }).subscribe(() => {});
+    expect(lastInstance()?.url).toBe("ws://x/api/feed?token=a%2Fb%3Fc%3Dd");
     sub.unsubscribe();
   });
 
-  it('path not starting with / → throws a TypeError synchronously before subscribing', () => {
-    const observe = createObserve('http://x/api', 't');
-    expect(() => observe('feed', { wsFactory: factory() })).toThrow(TypeError);
+  it("path not starting with / → throws a TypeError synchronously before subscribing", () => {
+    const observe = createObserve("http://x/api", "t");
+    expect(() => observe("feed", { wsFactory: factory() })).toThrow(TypeError);
   });
 
-  it('message: next after JSON parse; non-JSON arrives as the raw string', () => {
-    const observe = createObserve('http://x/api', 't');
+  it("message: next after JSON parse; non-JSON arrives as the raw string", () => {
+    const observe = createObserve("http://x/api", "t");
     const values: unknown[] = [];
-    const sub = observe('/feed', { wsFactory: factory() }).subscribe((v) => values.push(v));
+    const sub = observe("/feed", { wsFactory: factory() }).subscribe((v) =>
+      values.push(v),
+    );
     const ws = MockWebSocket.instances[0];
     ws?.serverOpen();
     ws?.serverMessage('{"a":1}');
-    ws?.serverMessage('plain-text');
-    expect(values).toEqual([{ a: 1 }, 'plain-text']);
+    ws?.serverMessage("plain-text");
+    expect(values).toEqual([{ a: 1 }, "plain-text"]);
     sub.unsubscribe();
   });
 
-  it('reconnects with exponential backoff after close (default first delay 500ms)', () => {
-    const observe = createObserve('http://x/api', 't');
-    observe('/feed', { wsFactory: factory() }).subscribe(() => {});
+  it("reconnects with exponential backoff after close (default first delay 500ms)", () => {
+    const observe = createObserve("http://x/api", "t");
+    observe("/feed", { wsFactory: factory() }).subscribe(() => {});
     expect(MockWebSocket.instances).toHaveLength(1);
     MockWebSocket.instances[0]?.serverClose();
     vi.advanceTimersByTime(499);
@@ -104,9 +108,9 @@ describe('createObserve', () => {
     expect(MockWebSocket.instances).toHaveLength(2);
   });
 
-  it('backoff counter resets after a successful open: a later drop starts from 500ms again', () => {
-    const observe = createObserve('http://x/api', 't');
-    observe('/feed', { wsFactory: factory() }).subscribe(() => {});
+  it("backoff counter resets after a successful open: a later drop starts from 500ms again", () => {
+    const observe = createObserve("http://x/api", "t");
+    observe("/feed", { wsFactory: factory() }).subscribe(() => {});
     MockWebSocket.instances[0]?.serverClose();
     vi.advanceTimersByTime(500);
     const second = MockWebSocket.instances[1];
@@ -118,9 +122,9 @@ describe('createObserve', () => {
     expect(MockWebSocket.instances).toHaveLength(3);
   });
 
-  it('consecutive failures cap the backoff at maxDelayMs (custom retry: 100×3³=2700 → capped at 900)', () => {
-    const observe = createObserve('http://x/api', 't');
-    observe('/feed', {
+  it("consecutive failures cap the backoff at maxDelayMs (custom retry: 100×3³=2700 → capped at 900)", () => {
+    const observe = createObserve("http://x/api", "t");
+    observe("/feed", {
       wsFactory: factory(),
       retry: { initialDelayMs: 100, factor: 3, maxDelayMs: 900 },
     }).subscribe(() => {});
@@ -144,10 +148,12 @@ describe('createObserve', () => {
     expect(MockWebSocket.instances).toHaveLength(5);
   });
 
-  it('onerror does not terminate the stream: reconnection is left to onclose, messages keep flowing after reconnect', () => {
-    const observe = createObserve('http://x/api', 't');
+  it("onerror does not terminate the stream: reconnection is left to onclose, messages keep flowing after reconnect", () => {
+    const observe = createObserve("http://x/api", "t");
     const values: unknown[] = [];
-    const sub = observe('/feed', { wsFactory: factory() }).subscribe((v) => values.push(v));
+    const sub = observe("/feed", { wsFactory: factory() }).subscribe((v) =>
+      values.push(v),
+    );
     const first = MockWebSocket.instances[0];
     first?.serverOpen();
     first?.serverMessage('{"n":1}');
@@ -162,9 +168,9 @@ describe('createObserve', () => {
     sub.unsubscribe();
   });
 
-  it('unsubscribe: clears the reconnect timer and closes the socket, no further reconnects', () => {
-    const observe = createObserve('http://x/api', 't');
-    const sub = observe('/feed', { wsFactory: factory() }).subscribe(() => {});
+  it("unsubscribe: clears the reconnect timer and closes the socket, no further reconnects", () => {
+    const observe = createObserve("http://x/api", "t");
+    const sub = observe("/feed", { wsFactory: factory() }).subscribe(() => {});
     const ws = MockWebSocket.instances[0];
     ws?.serverClose(); // scheduled a 500ms reconnect
     sub.unsubscribe();

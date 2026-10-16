@@ -9,10 +9,10 @@
 //! the shared function; the token middleware coverage semantics are already verified by
 //! tests/serve.rs (unified layer after merge).
 
-use axum::http::{Request, StatusCode};
 use axum::Router;
+use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use hyper_util::client::legacy::{connect::HttpConnector, Client};
+use hyper_util::client::legacy::{Client, connect::HttpConnector};
 use hyper_util::rt::TokioExecutor;
 use serde_json::json;
 use slsdk_rs::{ConfigField, ConfigFieldType, ConfigStore, OnChangeCallback};
@@ -166,10 +166,12 @@ async fn put_rejects_undeclared_key() {
         .unwrap_err();
     match err {
         slsdk_rs::ConfigError::Validation(errors) => {
-            assert!(errors["server.host"]
-                .as_str()
-                .unwrap()
-                .contains("undeclared"),);
+            assert!(
+                errors["server.host"]
+                    .as_str()
+                    .unwrap()
+                    .contains("undeclared"),
+            );
         }
         other => panic!("expected Validation, got {other:?}"),
     }
@@ -185,10 +187,12 @@ async fn put_rejects_wrong_type() {
         .unwrap_err();
     match err {
         slsdk_rs::ConfigError::Validation(errors) => {
-            assert!(errors["retries"]
-                .as_str()
-                .unwrap()
-                .contains("type mismatch"));
+            assert!(
+                errors["retries"]
+                    .as_str()
+                    .unwrap()
+                    .contains("type mismatch")
+            );
         }
         other => panic!("expected Validation, got {other:?}"),
     }
@@ -288,10 +292,12 @@ async fn put_required_checked_over_merged_state() {
         .unwrap_err();
     match err {
         slsdk_rs::ConfigError::Validation(errors) => {
-            assert!(errors["tushare.token"]
-                .as_str()
-                .unwrap()
-                .contains("required"),);
+            assert!(
+                errors["tushare.token"]
+                    .as_str()
+                    .unwrap()
+                    .contains("required"),
+            );
         }
         other => panic!("expected Validation, got {other:?}"),
     }

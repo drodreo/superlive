@@ -43,7 +43,10 @@ import type { ServeInfo } from "./serve-types";
  * **Reserved path**: `/health` is mounted by the SDK; the component handler never sees it
  * (on the rs side, author routes must not register the same path).
  */
-export async function serve(handler: ServeHandler, manifest: ServerManifest): Promise<ServeInfo> {
+export async function serve(
+  handler: ServeHandler,
+  manifest: ServerManifest,
+): Promise<ServeInfo> {
   return serveOn(detectRuntime(), handler, manifest);
 }
 
@@ -115,10 +118,17 @@ function serveDeno(
   const composed = composeHandler(handler, manifest, token);
   const deno = globalThis.Deno;
   if (deno === undefined) {
-    throw new TypeError('deno runtime requested but globalThis.Deno is absent');
+    throw new TypeError("deno runtime requested but globalThis.Deno is absent");
   }
-  const server = deno.serve({ hostname: endpoint.host, port: endpoint.port }, composed);
-  const actual: Endpoint = { kind: "tcp", host: server.addr.hostname, port: server.addr.port };
+  const server = deno.serve(
+    { hostname: endpoint.host, port: endpoint.port },
+    composed,
+  );
+  const actual: Endpoint = {
+    kind: "tcp",
+    host: server.addr.hostname,
+    port: server.addr.port,
+  };
   return {
     endpoint: actual,
     port: server.addr.port,
@@ -145,14 +155,20 @@ function serveBun(
   const composed = composeHandler(handler, manifest, token);
   const bun = globalThis.Bun;
   if (bun === undefined) {
-    throw new TypeError('bun runtime requested but globalThis.Bun is absent');
+    throw new TypeError("bun runtime requested but globalThis.Bun is absent");
   }
   const server =
     endpoint.kind === "tcp"
-      ? bun.serve({ hostname: endpoint.host, port: endpoint.port, fetch: composed })
+      ? bun.serve({
+          hostname: endpoint.host,
+          port: endpoint.port,
+          fetch: composed,
+        })
       : bun.serve({ unix: endpoint.path, fetch: composed });
   const actual: Endpoint =
-    endpoint.kind === "tcp" ? { kind: "tcp", host: endpoint.host, port: server.port } : endpoint;
+    endpoint.kind === "tcp"
+      ? { kind: "tcp", host: endpoint.host, port: server.port }
+      : endpoint;
   return {
     endpoint: actual,
     port: endpoint.kind === "tcp" ? server.port : undefined,

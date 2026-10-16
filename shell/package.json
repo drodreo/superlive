@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "smoke": "vite build && node scripts/smoke.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -26,6 +29,7 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
     "esbuild": "0.25.12",
+    "prettier": "^3.9.10",
     "typescript": "^5",
     "vite": "^6"
   }

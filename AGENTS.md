@@ -15,7 +15,7 @@ Components are independent projects and live outside this repository — they ar
 
 - **docs/architecture.md is the contract authority** — when the implementation conflicts with it, stop and realign there first; never improvise contract semantics in code.
 - **Language**: English throughout (docs, comments, commit messages); UI strings go through i18next (`shell/src/i18n.ts`, the `shell` namespace — typed keys, zh/en parity compile-enforced).
-- **Gates**: see [.github/workflows/ci.yml](.github/workflows/ci.yml) — rust fmt/test per subproject manifest, web typecheck/test (slsdk-ts) and build (shell). The shell uses pnpm; tauri CLI invocations are `cargo tauri …`.
+- **Gates**: see [.github/workflows/ci.yml](.github/workflows/ci.yml) — rust test on a three-platform matrix (fmt/clippy on Linux; the toolchain is pinned by `rust-toolchain.toml`), web format/typecheck/test (slsdk-ts) and build/format/smoke (shell). The shell uses pnpm; tauri CLI invocations are `cargo tauri …`.
 - **Vendor shims** (`shell/src/vendor/*.ts`): the react-family dev shims are generated — regenerate with `node scripts/gen-vendor-shims.mjs` after a react/react-dom bump; never hand-edit.
 - **Scaffold templates** (`slscaffold/src/templates/`): adding `#@if` markers to a template also requires flipping its `FilePlan` entry to `conditional: true` — substitution-only is the plan default, and markers silently survive it.
 - **Component i18n/theme contract**: module-tier components share the shell's i18next instance (via the import-map whitelist) and register namespaces with `registerI18n` from `@shell/sdk/ui`; the shell owns the `--sl-ui-*` token namespace (`html[data-theme]` mappings in `shell/src/App.css`).
