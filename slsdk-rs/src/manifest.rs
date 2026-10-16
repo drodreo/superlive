@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The manifest file at the root of a component package (package format contract, see
 /// architecture.md "Installation and Lifecycle").
@@ -526,7 +526,19 @@ impl std::error::Error for VerifyError {
 /// Fingerprint comparison is case-insensitive (hex case convention differences are not a
 /// failure reason).
 pub fn verify_files(root: &Path, manifest: &ComponentManifest) -> Result<(), VerifyError> {
-    let declared: HashSet<&str> = manifest.files.iter().map(|e| e.path.as_str()).collect();
+    // Windows verbatim roots (`\\?\C:\...`, as produced by canonicalize) bypass
+    // Win32 normalization, so a forward-slash relative path joined onto them is
+    // taken literally and never resolves; stripping the prefix puts every
+    // platform on the normalizing path form.
+    let root = strip_verbatim_prefix(root);
+    // Declared vs scanned paths are compared as component sequences, never as
+    // raw strings: declarations are POSIX-slash text while the filesystem scan
+    // yields separator-native paths (backslash on Windows).
+    let declared: HashSet<Vec<String>> = manifest
+        .files
+        .iter()
+        .map(|e| e.path.split('/').map(str::to_string).collect())
+        .collect();
 
     // Per-file verification: missing and fingerprint mismatch
     for entry in &manifest.files {
@@ -555,18 +567,19 @@ pub fn verify_files(root: &Path, manifest: &ComponentManifest) -> Result<(), Ver
 
     // Extra file detection: the difference of actual file set − declared set
     let mut actual_files = HashSet::new();
-    collect_relative_files(root, root, &mut actual_files).map_err(|source| VerifyError::Io {
+    collect_relative_files(&root, &root, &mut actual_files).map_err(|source| VerifyError::Io {
         path: root.to_string_lossy().into_owned(),
         source,
     })?;
-    if let Some(extra) = actual_files.iter().find(|p| !declared.contains(p.as_str())) {
-        return Err(VerifyError::ExtraFile(extra.clone()));
+    if let Some(extra) = actual_files.iter().find(|p| !declared.contains(*p)) {
+        return Err(VerifyError::ExtraFile(extra.join("/")));
     }
     Ok(())
 }
 
 /// Recursively collects relative paths of all regular files under root (no walkdir, keeping
-/// dependencies minimal).
+/// dependencies minimal). Paths are returned as component sequences so the
+/// caller's comparison is separator-agnostic.
 /// Uses file_type (lstat semantics, does not follow symlinks) rather than
 /// path::is_dir/is_file:
 /// under follow semantics a symlink pointing to an ancestor directory recurses infinitely,
@@ -575,7 +588,7 @@ pub fn verify_files(root: &Path, manifest: &ComponentManifest) -> Result<(), Ver
 fn collect_relative_files(
     root: &Path,
     dir: &Path,
-    out: &mut HashSet<String>,
+    out: &mut HashSet<Vec<String>>,
 ) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -593,10 +606,35 @@ fn collect_relative_files(
             let rel = path
                 .strip_prefix(root)
                 .expect("walk starts at root, so strip_prefix cannot fail");
-            out.insert(rel.to_string_lossy().into_owned());
+            out.insert(
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect(),
+            );
         }
     }
     Ok(())
+}
+
+/// Strips the Windows verbatim prefix (`\\?\C:\...` → `C:\...`,
+/// `\\?\UNC\server\share\...` → `\\server\share\...`) so joined relative paths
+/// go through Win32 normalization again; other platforms return the path
+/// unchanged.
+#[cfg(windows)]
+fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+    let text = path.as_os_str().to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path.to_path_buf()
+    }
+}
+
+#[cfg(not(windows))]
+fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+    path.to_path_buf()
 }
 
 fn sha256_hex(data: &[u8]) -> String {
