@@ -103,11 +103,13 @@ export async function serveOn(
 
 /** deno branch: Deno.serve consumes the composed pipeline natively (Request → Response).
  *
- * Known limitation: the stdin `shutdown` graceful-exit fallback (the Windows channel, rs
- * serve.rs parity) is implemented on the node branch only — a deno stdin line adapter is
- * deferred under the zero-runtime-dependency constraint (node is the current primary
- * runtime for Windows components); Windows deno components exit via the explicit
- * `shutdown()` or a kill only.
+ * SIGTERM/SIGINT funnel into the same graceful exit as shutdown() (node-branch parity,
+ * listeners removed once the server fully exits). Known limitation: the stdin `shutdown`
+ * graceful-exit fallback (the Windows channel, rs serve.rs parity) is implemented on the
+ * node branch only — a deno stdin line adapter is deferred under the
+ * zero-runtime-dependency constraint (node is the current primary runtime for Windows
+ * components); Windows deno components exit via the signals, the explicit `shutdown()`,
+ * or a kill.
  */
 function serveDeno(
   endpoint: Endpoint & { kind: "tcp" },
@@ -124,6 +126,17 @@ function serveDeno(
     { hostname: endpoint.host, port: endpoint.port },
     composed,
   );
+  // Signal wall (node-branch parity): SIGTERM is the shell's termination signal, SIGINT
+  // the debug companion; both funnel into the same graceful exit as shutdown().
+  const requestShutdown = (): void => {
+    server.shutdown();
+  };
+  deno.addSignalListener("SIGTERM", requestShutdown);
+  deno.addSignalListener("SIGINT", requestShutdown);
+  void server.finished.then(() => {
+    deno.removeSignalListener("SIGTERM", requestShutdown);
+    deno.removeSignalListener("SIGINT", requestShutdown);
+  });
   const actual: Endpoint = {
     kind: "tcp",
     host: server.addr.hostname,
@@ -133,7 +146,7 @@ function serveDeno(
     endpoint: actual,
     port: server.addr.port,
     shutdown: async () => {
-      server.shutdown();
+      requestShutdown();
       await server.finished;
     },
     wait: () => server.finished,
@@ -141,6 +154,10 @@ function serveDeno(
 }
 
 /** bun branch: Bun.serve consumes the composed pipeline natively; `unix` carries the UDS path.
+ *
+ * Signal wall rides on the node-compatible process signal surface (`process.on`), which
+ * keeps the registration/dispose shape identical to the node branch — the bun-native
+ * Bun.signal API would add a second signal mechanism for no gain.
  *
  * Known limitation: same as the deno branch — the stdin `shutdown` graceful-exit fallback
  * is implemented on the node branch only (node is the current primary runtime for Windows
@@ -165,6 +182,25 @@ function serveBun(
           fetch: composed,
         })
       : bun.serve({ unix: endpoint.path, fetch: composed });
+  // Signal wall: SIGTERM is the shell's termination signal, SIGINT the debug companion;
+  // both funnel into the same graceful stop (drain in-flight, then close) as shutdown().
+  // Bun's Server has no "stopped" promise — stop() itself resolves when the drain
+  // completes, so the shared exit promise is wired through it.
+  let signalDrained: () => void;
+  const stopped = new Promise<void>((resolve) => {
+    signalDrained = resolve;
+  });
+  const requestShutdown = (): void => {
+    server
+      .stop()
+      .then(() => signalDrained(), () => signalDrained());
+  };
+  process.on("SIGTERM", requestShutdown);
+  process.on("SIGINT", requestShutdown);
+  void stopped.then(() => {
+    process.removeListener("SIGTERM", requestShutdown);
+    process.removeListener("SIGINT", requestShutdown);
+  });
   const actual: Endpoint =
     endpoint.kind === "tcp"
       ? { kind: "tcp", host: endpoint.host, port: server.port }
@@ -172,11 +208,10 @@ function serveBun(
   return {
     endpoint: actual,
     port: endpoint.kind === "tcp" ? server.port : undefined,
-    // stop() without arguments drains in-flight requests before closing (graceful)
     shutdown: async () => {
-      server.stop();
-      await server.stopped;
+      requestShutdown();
+      await stopped;
     },
-    wait: () => server.stopped,
+    wait: () => stopped,
   };
 }

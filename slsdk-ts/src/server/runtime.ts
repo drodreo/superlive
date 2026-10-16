@@ -5,7 +5,8 @@
 export type RuntimeKind = "node" | "deno" | "bun";
 
 declare global {
-  // Minimal Deno.serve surface the SDK touches (Deno 2 HttpServer shape).
+  // Minimal Deno.serve surface the SDK touches (Deno 2 HttpServer shape) plus the signal
+  // listener pair for the graceful-exit wall (only the signals the SDK registers).
   var Deno:
     | {
         serve: (
@@ -16,10 +17,14 @@ declare global {
           finished: Promise<void>;
           shutdown(): void;
         };
+        addSignalListener(signal: "SIGTERM" | "SIGINT", handler: () => void): void;
+        removeSignalListener(signal: "SIGTERM" | "SIGINT", handler: () => void): void;
       }
     | undefined;
 
-  // Minimal Bun.serve surface the SDK touches (`unix` for UDS, `stopped` for graceful exit).
+  // Minimal Bun.serve surface the SDK touches (`unix` for UDS; stop() is graceful by
+  // default and resolves once in-flight requests have drained — Bun's Server exposes no
+  // separate "stopped" promise, the drain promise IS the exit signal).
   var Bun:
     | {
         serve: (options: {
@@ -29,8 +34,7 @@ declare global {
           fetch: (req: Request) => Response | Promise<Response>;
         }) => {
           port: number;
-          stopped: Promise<void>;
-          stop(closeActiveConnections?: boolean): void;
+          stop(closeActiveConnections?: boolean): Promise<unknown>;
         };
       }
     | undefined;
