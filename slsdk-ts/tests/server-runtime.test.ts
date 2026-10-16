@@ -53,6 +53,8 @@ describe("runtime dispatch matrix", () => {
     process.env.SL_ENDPOINT = "tcp:127.0.0.1:0";
     process.env.SL_TOKEN = "t";
     const shutdown = vi.fn();
+    const addSignalListener = vi.fn();
+    const removeSignalListener = vi.fn();
     let capturedOptions: { hostname?: string; port?: number } | undefined;
     (globalThis as { Deno?: unknown }).Deno = {
       serve: vi.fn(
@@ -69,6 +71,8 @@ describe("runtime dispatch matrix", () => {
           };
         },
       ),
+      addSignalListener,
+      removeSignalListener,
     };
     const info = await serveOn("deno", handler, manifest);
     expect(capturedOptions).toEqual({ hostname: "127.0.0.1", port: 0 });
@@ -78,44 +82,68 @@ describe("runtime dispatch matrix", () => {
       port: 45678,
     });
     expect(info.port).toBe(45678);
+    // signal wall (node-branch parity): SIGTERM/SIGINT registered, same handler both
+    expect(addSignalListener).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+    expect(addSignalListener).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+    const term = addSignalListener.mock.calls.find((c) => c[0] === "SIGTERM")?.[1] as () => void;
+    const int = addSignalListener.mock.calls.find((c) => c[0] === "SIGINT")?.[1] as () => void;
+    expect(term).toBe(int);
     await info.shutdown();
+    await vi.waitFor(() => {
+      expect(removeSignalListener).toHaveBeenCalledWith("SIGTERM", term);
+      expect(removeSignalListener).toHaveBeenCalledWith("SIGINT", int);
+    });
     expect(shutdown).toHaveBeenCalledOnce();
   });
 
   it("bun + tcp dispatches to Bun.serve with hostname/port", async () => {
     process.env.SL_ENDPOINT = "tcp:127.0.0.1:0";
     process.env.SL_TOKEN = "t";
-    const stop = vi.fn();
+    const stop = vi.fn(() => Promise.resolve(null));
+    const onSpy = vi.spyOn(process, "on");
+    const offSpy = vi.spyOn(process, "removeListener");
     let capturedOptions: Record<string, unknown> | undefined;
     (globalThis as { Bun?: unknown }).Bun = {
       serve: vi.fn((options: Record<string, unknown>) => {
         capturedOptions = options;
-        return { port: 45679, stopped: Promise.resolve(), stop };
+        return { port: 45679, stop };
       }),
     };
-    const info = await serveOn("bun", handler, manifest);
-    expect(capturedOptions?.hostname).toBe("127.0.0.1");
-    expect(capturedOptions?.port).toBe(0);
-    expect(capturedOptions?.fetch).toBeTypeOf("function");
-    expect(info.endpoint).toEqual({
-      kind: "tcp",
-      host: "127.0.0.1",
-      port: 45679,
-    });
-    expect(info.port).toBe(45679);
-    await info.shutdown();
-    expect(stop).toHaveBeenCalledOnce();
+    try {
+      const info = await serveOn("bun", handler, manifest);
+      expect(capturedOptions?.hostname).toBe("127.0.0.1");
+      expect(capturedOptions?.port).toBe(0);
+      expect(capturedOptions?.fetch).toBeTypeOf("function");
+      expect(info.endpoint).toEqual({
+        kind: "tcp",
+        host: "127.0.0.1",
+        port: 45679,
+      });
+      expect(info.port).toBe(45679);
+      // signal wall via the node-compatible process surface (node-branch parity)
+      expect(onSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+      expect(onSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+      await info.shutdown();
+      await vi.waitFor(() => {
+        expect(offSpy).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+        expect(offSpy).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+      });
+      expect(stop).toHaveBeenCalledOnce();
+    } finally {
+      onSpy.mockRestore();
+      offSpy.mockRestore();
+    }
   });
 
   it("bun + uds dispatches to Bun.serve with the unix option; the descriptor round-trips", async () => {
     process.env.SL_ENDPOINT = "uds:/tmp/bun.sock";
     process.env.SL_TOKEN = "t";
-    const stop = vi.fn();
+    const stop = vi.fn(() => Promise.resolve(null));
     let capturedOptions: Record<string, unknown> | undefined;
     (globalThis as { Bun?: unknown }).Bun = {
       serve: vi.fn((options: Record<string, unknown>) => {
         capturedOptions = options;
-        return { port: 0, stopped: Promise.resolve(), stop };
+        return { port: 0, stop };
       }),
     };
     const info = await serveOn("bun", handler, manifest);
