@@ -18,7 +18,8 @@
 #   (server build) cargo
 #@endif
 #@if HAS_SERVER && BACKEND_DENO
-#   (server build) deno (https://deno.com)
+#   (server build) deno (https://deno.com), plus bun or npm for the
+#   node_modules pre-install (deno cannot resolve file: deps alone)
 #@endif
 #@if HAS_SERVER && BACKEND_BUN
 #   (server build) bun (https://bun.sh)
@@ -60,8 +61,23 @@ fi
 #@if HAS_SERVER && BACKEND_DENO
 if [ "$HAS_SERVER_DIR" -eq 1 ]; then
   command -v deno >/dev/null 2>&1 || die "missing required command: deno - install it from https://deno.com first"
-  log "building server: deno compile --output bin/__ID__-server server/server.ts"
-  (cd "$ROOT" && deno compile --output "bin/__ID__-server" server/server.ts)
+  # Deno cannot resolve file: dependencies by itself: pre-install node_modules
+  # with bun (native file: support, recommended) or npm, then compile with
+  # --node-modules-dir=manual. The --allow flags are baked into the compiled
+  # binary (the shell spawns it as a plain executable, with no deno flags).
+  if [ ! -d "$ROOT/server/node_modules" ]; then
+    if command -v bun >/dev/null 2>&1; then
+      log "installing server deps: bun install (deno needs a pre-installed node_modules)"
+      (cd "$ROOT/server" && bun install) || die "server dependency pre-install failed (bun)"
+    elif command -v npm >/dev/null 2>&1; then
+      log "installing server deps: npm install (deno needs a pre-installed node_modules)"
+      (cd "$ROOT/server" && npm install) || die "server dependency pre-install failed (npm)"
+    else
+      die "missing required command: bun (or npm) - needed to pre-install server/node_modules for deno"
+    fi
+  fi
+  log "building server: deno compile --node-modules-dir=manual --allow-net --allow-read --allow-env --output bin/__ID__-server server/server.ts"
+  (cd "$ROOT" && deno compile --node-modules-dir=manual --allow-net --allow-read --allow-env --output "bin/__ID__-server" server/server.ts)
   SERVER_BIN="$ROOT/bin/__ID__-server"
   [ -f "$SERVER_BIN" ] || die "release binary does not exist: $SERVER_BIN"
 fi

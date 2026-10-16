@@ -30,15 +30,22 @@ const manifest: ServerManifest = {
 };
 
 /// Sample business handler. /health is reserved (mounted by the SDK) - author
-/// routes must not register it. Handlers receive the standard `Request` and
-/// return any `Response` (the runtime's native primitives; no framework).
-const routes = {
-  "/api/v1/hello": () => Response.json({ message: "hello from __ID__" }),
+/// routes must not register it. The handler receives the standard `Request`
+/// and returns any `Response` (the runtime's native primitives; no framework):
+/// dispatch on `req.url`'s pathname, return 404 for anything unhandled.
+const routes = (req: Request): Response => {
+  const path = new URL(req.url).pathname;
+  if (path === "/api/v1/hello") {
+    return Response.json({ message: "hello from __ID__" });
+  }
+  return new Response("not found", { status: 404 });
 };
 
 // serve() keeps the process alive until the shell stops it (SIGTERM). The
-// shell injects the listen descriptor through the SL_ENDPOINT environment
-// variable (format `tcp:addr` / `uds:path`; exported above as ENV_ENDPOINT
-// for standalone scripts that want the same name) and the per-component
-// token under SL_TOKEN; both are consumed inside the SDK.
-serve(manifest, routes);
+// handler comes first, the manifest second (the slsdk-ts contract mirrors
+// slsdk-rs's serve(app, manifest) argument order). The shell injects the
+// listen descriptor through the SL_ENDPOINT environment variable (format
+// `tcp:addr` / `uds:path`; exported above as ENV_ENDPOINT for standalone
+// scripts that want the same name) and the per-component token under
+// SL_TOKEN; both are consumed inside the SDK.
+serve(routes, manifest);
