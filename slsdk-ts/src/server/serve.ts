@@ -191,9 +191,10 @@ function serveBun(
     signalDrained = resolve;
   });
   const requestShutdown = (): void => {
-    server
-      .stop()
-      .then(() => signalDrained(), () => signalDrained());
+    server.stop().then(
+      () => signalDrained(),
+      () => signalDrained(),
+    );
   };
   process.on("SIGTERM", requestShutdown);
   process.on("SIGINT", requestShutdown);

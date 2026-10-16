@@ -83,10 +83,20 @@ describe("runtime dispatch matrix", () => {
     });
     expect(info.port).toBe(45678);
     // signal wall (node-branch parity): SIGTERM/SIGINT registered, same handler both
-    expect(addSignalListener).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
-    expect(addSignalListener).toHaveBeenCalledWith("SIGINT", expect.any(Function));
-    const term = addSignalListener.mock.calls.find((c) => c[0] === "SIGTERM")?.[1] as () => void;
-    const int = addSignalListener.mock.calls.find((c) => c[0] === "SIGINT")?.[1] as () => void;
+    expect(addSignalListener).toHaveBeenCalledWith(
+      "SIGTERM",
+      expect.any(Function),
+    );
+    expect(addSignalListener).toHaveBeenCalledWith(
+      "SIGINT",
+      expect.any(Function),
+    );
+    const term = addSignalListener.mock.calls.find(
+      (c) => c[0] === "SIGTERM",
+    )?.[1] as () => void;
+    const int = addSignalListener.mock.calls.find(
+      (c) => c[0] === "SIGINT",
+    )?.[1] as () => void;
     expect(term).toBe(int);
     await info.shutdown();
     await vi.waitFor(() => {
