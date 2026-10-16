@@ -138,6 +138,10 @@ async function main() {
   const preview = spawn(process.execPath, [
     VITE_BIN,
     "preview",
+    // Pin the host: "localhost" may resolve to ::1 on CI runners while the
+    // readiness probe below hits 127.0.0.1 — keep both on the same stack.
+    "--host",
+    "127.0.0.1",
     "--port",
     String(PORT),
     "--strictPort",
