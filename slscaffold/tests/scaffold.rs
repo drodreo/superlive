@@ -86,9 +86,18 @@ fn read_all(root: &Path, created: &[PathBuf]) -> Vec<(String, String)> {
 }
 
 fn has_file(created: &[PathBuf], suffix: &str) -> bool {
-    created
-        .iter()
-        .any(|path| path.to_string_lossy().ends_with(suffix))
+    // Component-suffix match (std `Path::ends_with`): separator-agnostic. A raw
+    // string suffix only works where the filesystem paths happen to use `/`.
+    let suffix = Path::new(suffix);
+    created.iter().any(|path| path.ends_with(suffix))
+}
+
+/// Joins a forward-slash relative path segment by segment: the scaffold root is
+/// canonicalized (absolutize), which on Windows yields the verbatim `\\?\` form
+/// where a `/` inside a joined literal is not normalized and the lookup misses.
+fn join_rel(root: &Path, rel: &str) -> PathBuf {
+    rel.split('/')
+        .fold(root.to_path_buf(), |acc, seg| acc.join(seg))
 }
 
 // ---- shape-dependent file trees ----
@@ -114,8 +123,8 @@ fn frontend_and_backend_generates_the_full_tree() {
     ] {
         assert!(has_file(&result.created, expected), "missing {expected}");
     }
-    assert!(result.root.join("server/Cargo.toml").is_file());
-    assert!(result.root.join("web/src/App.tsx").is_file());
+    assert!(join_rel(&result.root, "server/Cargo.toml").is_file());
+    assert!(join_rel(&result.root, "web/src/App.tsx").is_file());
 }
 
 #[test]
@@ -125,7 +134,7 @@ fn frontend_only_omits_the_server_plane() {
     assert_eq!(result.created.len(), 10);
     assert!(!has_file(&result.created, "server/"));
     assert!(!result.root.join("server").exists());
-    assert!(result.root.join("web/src/App.tsx").is_file());
+    assert!(join_rel(&result.root, "web/src/App.tsx").is_file());
 }
 
 #[test]
@@ -135,7 +144,7 @@ fn backend_only_omits_the_web_plane() {
     assert_eq!(result.created.len(), 4);
     assert!(!has_file(&result.created, "web/"));
     assert!(!result.root.join("web").exists());
-    assert!(result.root.join("server/src/main.rs").is_file());
+    assert!(join_rel(&result.root, "server/src/main.rs").is_file());
 }
 
 // ---- App sample differs by shape ----
@@ -155,12 +164,12 @@ fn ts_templates_generate_the_ts_server_tree() {
         assert!(!has_file(&result.created, "server/Cargo.toml"));
         assert!(!has_file(&result.created, "server/src/main.rs"));
         // The web plane is untouched by the backend template.
-        assert!(result.root.join("web/src/App.tsx").is_file());
+        assert!(join_rel(&result.root, "web/src/App.tsx").is_file());
 
         // The dependency root resolves slsdk-ts through the same two modes as
         // the web plane's manifest, and carries the pnpm build allowlist so a
         // fresh `pnpm install` does not die on esbuild's postinstall gate.
-        let package = fs::read_to_string(result.root.join("server/package.json")).unwrap();
+        let package = fs::read_to_string(join_rel(&result.root, "server/package.json")).unwrap();
         assert!(package.contains(r#""name": "demo-comp-server""#));
         assert!(package.contains(r#""private": true"#));
         assert!(package.contains(r#""slsdk-ts": "^0.2.0""#));
@@ -174,7 +183,7 @@ fn ts_server_entry_carries_identity_and_sdk_contract() {
     for template in [BackendTemplate::Deno, BackendTemplate::Bun] {
         let dir = TempDir::new().unwrap();
         let result = scaffold_with_template(&dir, ComponentShape::BackendOnly, template);
-        let server = fs::read_to_string(result.root.join("server/server.ts")).unwrap();
+        let server = fs::read_to_string(join_rel(&result.root, "server/server.ts")).unwrap();
         assert!(server.contains(
             r#"import { serve, ENV_ENDPOINT, type ServerManifest } from "slsdk-ts/server";"#
         ));
@@ -270,7 +279,7 @@ fn ts_server_package_json_follows_the_sdk_dependency_mode() {
         ..request_with_template(target, ComponentShape::BackendOnly, BackendTemplate::Deno)
     };
     let result = slscaffold::scaffold(&request).expect("local-mode scaffold must succeed");
-    let package = fs::read_to_string(result.root.join("server/package.json")).unwrap();
+    let package = fs::read_to_string(join_rel(&result.root, "server/package.json")).unwrap();
     // The `file:{path}` (single-slash) form is the existing rendering the web
     // plane's manifest uses — this plane mirrors it byte for byte.
     let expected = format!(
@@ -292,7 +301,7 @@ fn scaffold_creates_a_missing_parent_chain() {
     let target = dir.path().join("a").join("b").join("proj");
     let result = slscaffold::scaffold(&request(target, ComponentShape::BackendOnly))
         .expect("missing parents are created, not an error");
-    assert!(result.root.join("server/src/main.rs").is_file());
+    assert!(join_rel(&result.root, "server/src/main.rs").is_file());
 }
 
 // ---- the generated cargo project must compile ----
@@ -382,14 +391,14 @@ fn app_sample_api_chain_follows_the_shape() {
     // request would just render a guaranteed error.
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
-    let app = fs::read_to_string(result.root.join("web/src/App.tsx")).unwrap();
+    let app = fs::read_to_string(join_rel(&result.root, "web/src/App.tsx")).unwrap();
     assert!(app.contains("createClient"));
     assert!(app.contains("/api/v1/hello"));
     assert!(app.contains("NAMESPACE_PREFIX"));
 
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendOnly);
-    let app = fs::read_to_string(result.root.join("web/src/App.tsx")).unwrap();
+    let app = fs::read_to_string(join_rel(&result.root, "web/src/App.tsx")).unwrap();
     assert!(!app.contains("createClient"));
     assert!(!app.contains("/api/v1/hello"));
     assert!(!app.contains("NAMESPACE_PREFIX"));
@@ -447,7 +456,7 @@ fn web_i18n_registers_every_configured_locale_row_and_the_namespace_note() {
     // and to any AI assistant working on the generated project)
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
-    let i18n = fs::read_to_string(result.root.join("web/src/i18n.ts")).unwrap();
+    let i18n = fs::read_to_string(join_rel(&result.root, "web/src/i18n.ts")).unwrap();
     assert!(
         i18n.contains("zh: { title: '演示组件' },"),
         "zh title row missing: {i18n}"
@@ -593,7 +602,7 @@ fn build_script_is_the_bash_dialect_and_follows_the_shape() {
     let render_build = |shape| {
         let dir = TempDir::new().unwrap();
         let result = scaffold_into(&dir, shape);
-        fs::read_to_string(result.root.join("scripts/superlive.build")).unwrap()
+        fs::read_to_string(join_rel(&result.root, "scripts/superlive.build")).unwrap()
     };
 
     let full = render_build(ComponentShape::FrontendAndBackend);
@@ -666,8 +675,8 @@ fn readme_differs_by_shape() {
 fn registry_dependencies_use_version_specs() {
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
-    let cargo = fs::read_to_string(result.root.join("server/Cargo.toml")).unwrap();
-    let package = fs::read_to_string(result.root.join("web/package.json")).unwrap();
+    let cargo = fs::read_to_string(join_rel(&result.root, "server/Cargo.toml")).unwrap();
+    let package = fs::read_to_string(join_rel(&result.root, "web/package.json")).unwrap();
     assert!(cargo.contains("slsdk-rs = \"0.2\""));
     assert!(package.contains("\"slsdk-ts\": \"^0.2.0\""));
 }
@@ -687,8 +696,8 @@ fn local_sdk_uses_forward_slash_path_and_file_lines() {
     };
     let result = slscaffold::scaffold(&req).expect("local sdk scaffold must succeed");
 
-    let cargo = fs::read_to_string(result.root.join("server/Cargo.toml")).unwrap();
-    let package = fs::read_to_string(result.root.join("web/package.json")).unwrap();
+    let cargo = fs::read_to_string(join_rel(&result.root, "server/Cargo.toml")).unwrap();
+    let package = fs::read_to_string(join_rel(&result.root, "web/package.json")).unwrap();
     let expected_rs = format!(
         "slsdk-rs = {{ path = \"{}\" }}",
         checkout.join("slsdk-rs").display()
@@ -777,7 +786,7 @@ fn bash_build_script_is_executable() {
     use std::os::unix::fs::PermissionsExt;
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::BackendOnly);
-    let mode = fs::metadata(result.root.join("scripts/superlive.build"))
+    let mode = fs::metadata(join_rel(&result.root, "scripts/superlive.build"))
         .unwrap()
         .permissions()
         .mode();

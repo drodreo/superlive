@@ -1029,13 +1029,18 @@ mod tests {
         // Project landed on disk + the registration view
         assert!(target.join("server/Cargo.toml").is_file());
         assert!(target.join("web/src/main.tsx").is_file());
-        assert_eq!(result.project_dir, target.to_string_lossy());
+        // slscaffold canonicalizes the target (absolutize): on Windows that is
+        // the verbatim long-path form (`\\?\C:\...`) while the tempdir path may
+        // carry the 8.3 short name — compare against the same-source
+        // canonical form, not the raw tempdir string.
+        let target_canonical = target.canonicalize().unwrap();
+        assert_eq!(result.project_dir, target_canonical.to_string_lossy());
         assert!(!result.next_steps.is_empty());
         let view = &result.component;
         assert_eq!(view.source, ComponentSource::Dev);
         assert_eq!(
             view.project_dir.as_deref(),
-            Some(target.to_string_lossy().as_ref())
+            Some(target_canonical.to_string_lossy().as_ref())
         );
         // Shape mapping (identical to the packaging chain): ui=module/entry.js, menu/routes, launch
         let ui = view.ui.as_ref().unwrap();
@@ -1050,7 +1055,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(entry.source, ComponentSource::Dev);
-        assert_eq!(entry.project_dir.as_deref(), Some(target.as_path()));
+        assert_eq!(
+            entry.project_dir.as_deref(),
+            Some(target_canonical.as_path())
+        );
         // The creation flow captures the registration timestamp at creation
         assert!(entry.registered_at.is_some());
         let m = &entry.manifest;
