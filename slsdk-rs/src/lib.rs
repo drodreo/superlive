@@ -23,6 +23,6 @@ pub use endpoint::{ENV_ENDPOINT, ENV_TOKEN, Endpoint, EndpointParseError};
 pub use manifest::{
     ComponentConfig, ComponentManifest, ConfigField, ConfigFieldType, FileEntry, LaunchConfig,
     ManifestError, MenuDeclaration, RouteDeclaration, TransportCaps, UiDeclaration, UiType,
-    VerifyError, verify_files,
+    VerifyError, strip_verbatim_prefix, verify_files,
 };
 pub use serve::{ServeError, ServeInfo, ShutdownHandle, serve, serve_with_config};

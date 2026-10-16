@@ -407,9 +407,13 @@ fn validate_display_titles(titles: &[LocalizedTitle]) -> Result<(), ScaffoldErro
 /// Resolves `path` to an absolute path without requiring the final segment to
 /// exist: an existing path is canonicalized; a missing path is anchored on its
 /// canonicalized parent.
+///
+/// The result never carries a Windows verbatim (`\\?\`) prefix: it flows into
+/// the registration record and the UI as-is, and canonicalize produces the
+/// verbatim form on Windows.
 fn absolutize(path: &Path) -> Result<PathBuf, ScaffoldError> {
     if let Ok(canon) = path.canonicalize() {
-        return Ok(canon);
+        return Ok(strip_verbatim(canon));
     }
     let file_name = path.file_name().ok_or_else(|| ScaffoldError::Io {
         path: path.to_path_buf(),
@@ -420,7 +424,28 @@ fn absolutize(path: &Path) -> Result<PathBuf, ScaffoldError> {
         path: parent.to_path_buf(),
         source,
     })?;
-    Ok(parent.join(file_name))
+    Ok(strip_verbatim(parent).join(file_name))
+}
+
+/// Drop the Windows verbatim prefix (`\\?\` / `\\?\UNC\`) that canonicalize
+/// produces on Windows — a plain Win32 path participates in normal path
+/// normalization again (same treatment as slsdk-rs's verify_files).
+#[cfg(unix)]
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    path
+}
+
+#[cfg(windows)]
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    let s = path.as_os_str().to_string_lossy();
+    let rest = if let Some(tail) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{tail}")
+    } else if let Some(tail) = s.strip_prefix(r"\\?\") {
+        tail.to_string()
+    } else {
+        return path;
+    };
+    PathBuf::from(rest)
 }
 
 /// Forward-slash form of a path for generated dependency lines (safe on every
