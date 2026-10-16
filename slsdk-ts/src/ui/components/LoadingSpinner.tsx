@@ -3,25 +3,27 @@
  * The size modifier uses dedicated classes sl-ui-loading-spinner--sm / --lg (class+class compounds banned).
  */
 export interface LoadingSpinnerProps {
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
   message?: string;
   overlay?: boolean;
 }
 
 const sizeClass = {
-  sm: 'sl-ui-loading-spinner--sm',
-  md: '',
-  lg: 'sl-ui-loading-spinner--lg',
+  sm: "sl-ui-loading-spinner--sm",
+  md: "",
+  lg: "sl-ui-loading-spinner--lg",
 };
 
 export function LoadingSpinner({
-  size = 'md',
+  size = "md",
   message,
   overlay = true,
 }: LoadingSpinnerProps) {
   const spinner = (
     <>
-      <div className={`sl-ui-loading-spinner${sizeClass[size] ? ' ' + sizeClass[size] : ''}`} />
+      <div
+        className={`sl-ui-loading-spinner${sizeClass[size] ? " " + sizeClass[size] : ""}`}
+      />
       {message && <span className="sl-ui-loading-message">{message}</span>}
     </>
   );

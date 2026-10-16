@@ -13,8 +13,8 @@
  * the data source is injected by the consumer via `references?: Record<string, ReferenceSpec>` (see
  * CrudListPage / QueryListToolbar).
  */
-import type { ReactNode } from 'react';
-import type { SelectOption } from '../types';
+import type { ReactNode } from "react";
+import type { SelectOption } from "../types";
 
 /** file-tier probe backfill key declarations (the componentization-era port of the materials file_meta conventions) */
 export interface FileAutoFill {
@@ -33,7 +33,15 @@ export interface FileAutoFill {
 export interface FormFieldSchema {
   key: string;
   label: string;
-  type: 'input' | 'textarea' | 'select' | 'reference' | 'checkbox' | 'directory' | 'datetime' | 'file';
+  type:
+    | "input"
+    | "textarea"
+    | "select"
+    | "reference"
+    | "checkbox"
+    | "directory"
+    | "datetime"
+    | "file";
   required?: boolean;
   placeholder?: string;
   /** Disabled field (passed through to the underlying input control; not editable in the UI but shows the current value) */
@@ -62,11 +70,22 @@ export interface FormFieldProps {
   className?: string;
 }
 
-export function FormField({ label, required, error, hint, children, className }: FormFieldProps) {
+export function FormField({
+  label,
+  required,
+  error,
+  hint,
+  children,
+  className,
+}: FormFieldProps) {
   return (
-    <div className={`sl-ui-form-field${className ? ' ' + className : ''}`}>
+    <div className={`sl-ui-form-field${className ? " " + className : ""}`}>
       {label && (
-        <label className={`sl-ui-form-label${required ? ' sl-ui-form-label--required' : ''}`}>{label}</label>
+        <label
+          className={`sl-ui-form-label${required ? " sl-ui-form-label--required" : ""}`}
+        >
+          {label}
+        </label>
       )}
       {children}
       {error && <span className="sl-ui-form-error">{error}</span>}

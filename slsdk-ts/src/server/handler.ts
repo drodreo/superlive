@@ -27,19 +27,28 @@ export function composeHandler(
   return async (req) => {
     // 1. Token wall: applies to every route (health probe carries the token too)
     if (token !== null && !(await isAuthorized(req, token))) {
-      return new Response(null, { status: 401, headers: { "www-authenticate": "Bearer" } });
+      return new Response(null, {
+        status: 401,
+        headers: { "www-authenticate": "Bearer" },
+      });
     }
     // 2. Reserved path: /health is SDK-owned (readiness probe and health check share one
     //    endpoint). Non-GET methods on the reserved path get 405, matching the axum
     //    MethodRouter behavior on the rs side.
     if (new URL(req.url).pathname === "/health") {
       if (req.method === "GET" || req.method === "HEAD") {
-        return new Response(JSON.stringify({ id: manifest.id, version: manifest.version }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ id: manifest.id, version: manifest.version }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
       }
-      return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });
+      return new Response(null, {
+        status: 405,
+        headers: { allow: "GET, HEAD" },
+      });
     }
     // 3. Component business handler; a throw maps to an empty 500 — caught here (not per
     //    adapter) so all three runtimes share the same failure shape (the rs side surfaces

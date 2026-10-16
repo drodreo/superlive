@@ -19,7 +19,7 @@
  *   the `references?: Record<string, ReferenceSpec>` prop passes down to the form's reference
  *   tier and the query drawer; a missing spec warns in dev mode (built into useReferenceOptions)
  */
-import { useState, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useMemo, type ReactNode } from "react";
 import {
   DataTable,
   Pagination,
@@ -37,12 +37,15 @@ import {
   ErrorMessage,
   type DataTableColumn,
   type FormSchema,
-} from '../components';
-import type { IdInput, ReferenceSpec, FileProbeFn } from '../types';
-import type { FileAutoFill } from '../components/FormField';
-import { useReferenceOptions, useReferenceOptionById } from '../hooks/useReferenceOptions';
-import { Button } from '../components/Button';
-import { DEFAULT_PAGE_SIZE } from '../hooks/createEntityHook';
+} from "../components";
+import type { IdInput, ReferenceSpec, FileProbeFn } from "../types";
+import type { FileAutoFill } from "../components/FormField";
+import {
+  useReferenceOptions,
+  useReferenceOptionById,
+} from "../hooks/useReferenceOptions";
+import { Button } from "../components/Button";
+import { DEFAULT_PAGE_SIZE } from "../hooks/createEntityHook";
 
 /** Form value carrier (string / string[] / boolean / undefined; the checkbox tier round-trips as 'true'/'false') */
 export type FieldValue = string | string[] | boolean | undefined;
@@ -50,50 +53,58 @@ export type FieldValue = string | string[] | boolean | undefined;
 function buildFormDefaults(schema: FormSchema): Record<string, FieldValue> {
   const defaults: Record<string, FieldValue> = {};
   for (const f of schema.fields) {
-    defaults[f.key] = f.type === 'checkbox' ? false : '';
+    defaults[f.key] = f.type === "checkbox" ? false : "";
   }
   return defaults;
 }
 
 /** ISO 8601 → datetime-local control value (local timezone, minute precision); empty/invalid returns the empty string */
 function toLocalInputValue(iso: string | undefined): string {
-  if (!iso) return '';
+  if (!iso) return "";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** datetime-local control value → ISO 8601; empty/invalid returns the empty string */
 function fromLocalInputValue(local: string): string {
-  if (!local) return '';
+  if (!local) return "";
   const d = new Date(local);
-  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
 /** Friendly formatting for detail values (boolean / DateTime / array / null) */
 function formatDetailValue(v: unknown): string {
-  if (v === null || v === undefined) return '-';
-  if (typeof v === 'boolean') return v ? '✓ 是' : '✗ 否';
-  if (typeof v === 'string') {
-    if (v.length === 0) return '-';
+  if (v === null || v === undefined) return "-";
+  if (typeof v === "boolean") return v ? "✓ 是" : "✗ 否";
+  if (typeof v === "string") {
+    if (v.length === 0) return "-";
     // ISO 8601 DateTime → localized time
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) {
       const d = new Date(v);
       if (!Number.isNaN(d.getTime())) {
-        return d.toLocaleString('zh-CN', { hour12: false });
+        return d.toLocaleString("zh-CN", { hour12: false });
       }
     }
     return v;
   }
-  if (Array.isArray(v)) return v.length === 0 ? '-' : `${v.length} 项`;
+  if (Array.isArray(v)) return v.length === 0 ? "-" : `${v.length} 项`;
   return String(v);
 }
 
 /** Inline SVG icons (lucide-react is not on the component whitelist) */
 function PlusIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+    >
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
@@ -102,7 +113,16 @@ function PlusIcon() {
 
 function TrashIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="3 6 5 6 21 6" />
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
@@ -119,7 +139,10 @@ export interface CrudListPageProps<T extends { id?: string | null }> {
   /** Business object → form values */
   toFormValue: (row: T) => Record<string, FieldValue>;
   /** Form values → business object */
-  fromFormValue: (value: Record<string, FieldValue>, defaults?: Partial<T>) => Partial<T>;
+  fromFormValue: (
+    value: Record<string, FieldValue>,
+    defaults?: Partial<T>,
+  ) => Partial<T>;
   /** Data loading state */
   loading: boolean;
   /** Error message */
@@ -190,32 +213,40 @@ export function CrudListPage<T extends { id?: string | null }>({
   // ===== Client-side UI state (fallback mode when queryToolbar is omitted) =====
   const [fallbackPage, setFallbackPage] = useState(1);
   const page = pageProp ?? fallbackPage;
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState('');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // ===== Form / delete / detail state =====
   const [formOpen, setFormOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [editingRow, setEditingRow] = useState<T | null>(null);
-  const [formValues, setFormValues] = useState<Record<string, FieldValue>>(buildFormDefaults(formSchema));
+  const [formValues, setFormValues] = useState<Record<string, FieldValue>>(
+    buildFormDefaults(formSchema),
+  );
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [detailRow, setDetailRow] = useState<T | null>(null);
 
   const total = totalProp ?? items.length;
 
   // ===== Client-side sorting / search (fallback mode) =====
-  const handleSort = useCallback((key: string) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      setSortDir('asc');
-    }
-  }, [sortKey]);
+  const handleSort = useCallback(
+    (key: string) => {
+      if (sortKey === key) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortKey(key);
+        setSortDir("asc");
+      }
+    },
+    [sortKey],
+  );
 
   const handleSearch = useCallback((value: string) => {
     setSearch(value);
@@ -230,12 +261,15 @@ export function CrudListPage<T extends { id?: string | null }>({
     setFormOpen(true);
   }, [formSchema]);
 
-  const openEditForm = useCallback((row: T) => {
-    setEditingRow(row);
-    setFormValues(toFormValue(row));
-    setFormErrors({});
-    setFormOpen(true);
-  }, [toFormValue]);
+  const openEditForm = useCallback(
+    (row: T) => {
+      setEditingRow(row);
+      setFormValues(toFormValue(row));
+      setFormErrors({});
+      setFormOpen(true);
+    },
+    [toFormValue],
+  );
 
   const closeForm = useCallback(() => {
     setFormOpen(false);
@@ -248,7 +282,7 @@ export function CrudListPage<T extends { id?: string | null }>({
     const errors: Record<string, string> = {};
     for (const f of formSchema.fields) {
       if (f.required && !formValues[f.key]) {
-        errors[f.key] = '该项为必填项';
+        errors[f.key] = "该项为必填项";
       }
     }
     setFormErrors(errors);
@@ -270,17 +304,29 @@ export function CrudListPage<T extends { id?: string | null }>({
       refresh();
     } catch (e: unknown) {
       const err = e as { detail?: string; message?: string };
-      setFormErrors({ _form: err?.detail ?? err?.message ?? '提交失败' });
+      setFormErrors({ _form: err?.detail ?? err?.message ?? "提交失败" });
     } finally {
       setFormLoading(false);
     }
-  }, [validateForm, formValues, editingRow, fromFormValue, update, add, closeForm, refresh]);
+  }, [
+    validateForm,
+    formValues,
+    editingRow,
+    fromFormValue,
+    update,
+    add,
+    closeForm,
+    refresh,
+  ]);
 
-  const confirmDelete = useCallback((row: T) => {
-    const id = getId(row) ?? '';
-    const name = getDisplayName(row) || id;
-    setDeleteTarget({ id: String(id), name });
-  }, [getId, getDisplayName]);
+  const confirmDelete = useCallback(
+    (row: T) => {
+      const id = getId(row) ?? "";
+      const name = getDisplayName(row) || id;
+      setDeleteTarget({ id: String(id), name });
+    },
+    [getId, getDisplayName],
+  );
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -294,116 +340,132 @@ export function CrudListPage<T extends { id?: string | null }>({
     }
   }, [deleteTarget, remove, refresh]);
 
-  const renderFieldInput = useCallback((f: FormSchema['fields'][number]) => {
-    const value = formValues[f.key] ?? '';
-    const setField = (v: string) => setFormValues((s) => ({ ...s, [f.key]: v }));
+  const renderFieldInput = useCallback(
+    (f: FormSchema["fields"][number]) => {
+      const value = formValues[f.key] ?? "";
+      const setField = (v: string) =>
+        setFormValues((s) => ({ ...s, [f.key]: v }));
 
-    if (f.type === 'textarea') {
-      return (
-        <Textarea
-          value={String(value)}
-          onChange={setField}
-          placeholder={f.placeholder}
-          disabled={f.disabled}
-        />
-      );
-    }
-    if (f.type === 'select') {
-      return (
-        <Select
-          value={value ? String(value) : null}
-          onChange={(v) => setField(v ?? '')}
-          options={f.options ?? []}
-          placeholder={f.placeholder ?? '请选择'}
-          disabled={f.disabled}
-        />
-      );
-    }
-    if (f.type === 'checkbox') {
-      // Form value carrier: the hooks converters round-trip as string 'true'/'false' (original shape),
-      // the render check compares explicitly to avoid Boolean('false') evaluating true
-      const checked = value === true || value === 'true';
-      return (
-        <Checkbox
-          checked={checked}
-          onChange={(v) => setFormValues((s) => ({ ...s, [f.key]: v }))}
-          disabled={f.disabled}
-        />
-      );
-    }
-    if (f.type === 'reference') {
-      const spec = f.reference ? references?.[f.reference.entity] : undefined;
-      return (
-        <ReferenceFieldInput
-          spec={spec}
-          value={String(value)}
-          onChange={setField}
-          placeholder={f.placeholder}
-          disabled={f.disabled}
-        />
-      );
-    }
-    if (f.type === 'directory') {
-      // Directory path input: the tauri directory dialog is unreachable in the component environment (module ⑧ ruling 10 precedent), hand-typed form
+      if (f.type === "textarea") {
+        return (
+          <Textarea
+            value={String(value)}
+            onChange={setField}
+            placeholder={f.placeholder}
+            disabled={f.disabled}
+          />
+        );
+      }
+      if (f.type === "select") {
+        return (
+          <Select
+            value={value ? String(value) : null}
+            onChange={(v) => setField(v ?? "")}
+            options={f.options ?? []}
+            placeholder={f.placeholder ?? "请选择"}
+            disabled={f.disabled}
+          />
+        );
+      }
+      if (f.type === "checkbox") {
+        // Form value carrier: the hooks converters round-trip as string 'true'/'false' (original shape),
+        // the render check compares explicitly to avoid Boolean('false') evaluating true
+        const checked = value === true || value === "true";
+        return (
+          <Checkbox
+            checked={checked}
+            onChange={(v) => setFormValues((s) => ({ ...s, [f.key]: v }))}
+            disabled={f.disabled}
+          />
+        );
+      }
+      if (f.type === "reference") {
+        const spec = f.reference ? references?.[f.reference.entity] : undefined;
+        return (
+          <ReferenceFieldInput
+            spec={spec}
+            value={String(value)}
+            onChange={setField}
+            placeholder={f.placeholder}
+            disabled={f.disabled}
+          />
+        );
+      }
+      if (f.type === "directory") {
+        // Directory path input: the tauri directory dialog is unreachable in the component environment (module ⑧ ruling 10 precedent), hand-typed form
+        return (
+          <Input
+            value={String(value)}
+            onChange={setField}
+            placeholder={f.placeholder ?? "如 outputs/invoices/templates"}
+            disabled={f.disabled}
+          />
+        );
+      }
+      if (f.type === "datetime") {
+        // Date-time: native datetime-local (the original react-datepicker is not on the component
+        // dependency whitelist); the form value carries an ISO string, control values round-trip through the local shape
+        return (
+          <input
+            type="datetime-local"
+            className="sl-ui-input-field"
+            value={toLocalInputValue(value ? String(value) : undefined)}
+            onChange={(e) => setField(fromLocalInputValue(e.target.value))}
+            disabled={f.disabled}
+          />
+        );
+      }
+      if (f.type === "file") {
+        // File path: hand-typed + fileProbe probe backfill (autoFill declares the keys); without the
+        // probe function FileFieldInput degrades to a plain input
+        return (
+          <FileFieldInput
+            path={String(value)}
+            onPathChange={setField}
+            autoFill={f.autoFill}
+            probe={fileProbe}
+            onAutoFill={(patch) => setFormValues((s) => ({ ...s, ...patch }))}
+            formValues={formValues}
+          />
+        );
+      }
       return (
         <Input
           value={String(value)}
           onChange={setField}
-          placeholder={f.placeholder ?? '如 outputs/invoices/templates'}
+          placeholder={f.placeholder}
           disabled={f.disabled}
         />
       );
-    }
-    if (f.type === 'datetime') {
-      // Date-time: native datetime-local (the original react-datepicker is not on the component
-      // dependency whitelist); the form value carries an ISO string, control values round-trip through the local shape
-      return (
-        <input
-          type="datetime-local"
-          className="sl-ui-input-field"
-          value={toLocalInputValue(value ? String(value) : undefined)}
-          onChange={(e) => setField(fromLocalInputValue(e.target.value))}
-          disabled={f.disabled}
-        />
-      );
-    }
-    if (f.type === 'file') {
-      // File path: hand-typed + fileProbe probe backfill (autoFill declares the keys); without the
-      // probe function FileFieldInput degrades to a plain input
-      return (
-        <FileFieldInput
-          path={String(value)}
-          onPathChange={setField}
-          autoFill={f.autoFill}
-          probe={fileProbe}
-          onAutoFill={(patch) => setFormValues((s) => ({ ...s, ...patch }))}
-          formValues={formValues}
-        />
-      );
-    }
-    return (
-      <Input
-        value={String(value)}
-        onChange={setField}
-        placeholder={f.placeholder}
-        disabled={f.disabled}
-      />
-    );
-  }, [formValues, references, fileProbe]);
+    },
+    [formValues, references, fileProbe],
+  );
 
   const allColumns: DataTableColumn[] = useMemo(
     () => [
       ...columns,
       {
-        key: '_actions',
-        label: '操作',
+        key: "_actions",
+        label: "操作",
         render: (_: unknown, row: Record<string, unknown>) => (
           <div className="sl-ui-row-actions">
             {!hideDefaultDetailButton && (
-              <Button variant="ghost" size="sm" onClick={() => setDetailRow(row as T)}>详情</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDetailRow(row as T)}
+              >
+                详情
+              </Button>
             )}
             {!readOnly && !hideDefaultEditButton && (
-              <Button variant="ghost" size="sm" onClick={() => openEditForm(row as T)}>编辑</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => openEditForm(row as T)}
+              >
+                编辑
+              </Button>
             )}
             {extraRowActions?.(row as T)}
             {!readOnly && (
@@ -421,7 +483,15 @@ export function CrudListPage<T extends { id?: string | null }>({
         ),
       },
     ],
-    [columns, readOnly, hideDefaultDetailButton, hideDefaultEditButton, extraRowActions, openEditForm, confirmDelete],
+    [
+      columns,
+      readOnly,
+      hideDefaultDetailButton,
+      hideDefaultEditButton,
+      extraRowActions,
+      openEditForm,
+      confirmDelete,
+    ],
   );
 
   // In client-side fallback mode, filter the current page by search (in queryToolbar mode search stays empty, no filtering)
@@ -429,7 +499,11 @@ export function CrudListPage<T extends { id?: string | null }>({
     if (!search.trim()) return items;
     const q = search.trim().toLowerCase();
     return items.filter((row) =>
-      columns.some((col) => String((row as Record<string, unknown>)[col.key] ?? '').toLowerCase().includes(q)),
+      columns.some((col) =>
+        String((row as Record<string, unknown>)[col.key] ?? "")
+          .toLowerCase()
+          .includes(q),
+      ),
     );
   }, [items, search, columns]);
 
@@ -437,7 +511,12 @@ export function CrudListPage<T extends { id?: string | null }>({
     <div className="sl-ui-crud-list-page">
       <header className="sl-ui-crud-header">
         {!readOnly && (
-          <Button variant="primary" size="md" icon={<PlusIcon />} onClick={openAddForm}>
+          <Button
+            variant="primary"
+            size="md"
+            icon={<PlusIcon />}
+            onClick={openAddForm}
+          >
             新建
           </Button>
         )}
@@ -447,7 +526,11 @@ export function CrudListPage<T extends { id?: string | null }>({
       {queryToolbar ?? (
         <div className="sl-ui-crud-toolbar">
           <div className="sl-ui-crud-toolbar-row">
-            <SearchBar value={search} onChange={handleSearch} placeholder={`搜索${displayName}…`} />
+            <SearchBar
+              value={search}
+              onChange={handleSearch}
+              placeholder={`搜索${displayName}…`}
+            />
           </div>
         </div>
       )}
@@ -483,7 +566,12 @@ export function CrudListPage<T extends { id?: string | null }>({
               emptyMessage={`暂无${displayName}`}
             />
             <div className="sl-ui-crud-pagination">
-              <Pagination page={page} total={total} pageSize={DEFAULT_PAGE_SIZE} onChange={onPageChange ?? setFallbackPage} />
+              <Pagination
+                page={page}
+                total={total}
+                pageSize={DEFAULT_PAGE_SIZE}
+                onChange={onPageChange ?? setFallbackPage}
+              />
             </div>
           </>
         )}
@@ -497,9 +585,17 @@ export function CrudListPage<T extends { id?: string | null }>({
         loading={formLoading}
         submitDisabled={formLoading}
       >
-        {formErrors._form && <div className="sl-ui-form-error-banner">{formErrors._form}</div>}
+        {formErrors._form && (
+          <div className="sl-ui-form-error-banner">{formErrors._form}</div>
+        )}
         {formSchema.fields.map((f) => (
-          <FormField key={f.key} label={f.label} required={f.required} error={formErrors[f.key]} hint={f.hint}>
+          <FormField
+            key={f.key}
+            label={f.label}
+            required={f.required}
+            error={formErrors[f.key]}
+            hint={f.hint}
+          >
             {renderFieldInput(f)}
           </FormField>
         ))}
@@ -510,7 +606,7 @@ export function CrudListPage<T extends { id?: string | null }>({
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         title={`删除${displayName}`}
-        message={`确定要删除「${deleteTarget?.name ?? ''}」吗？`}
+        message={`确定要删除「${deleteTarget?.name ?? ""}」吗？`}
         confirmText="删除"
         cancelText="取消"
         danger
@@ -518,13 +614,21 @@ export function CrudListPage<T extends { id?: string | null }>({
         warningText="此操作不可恢复。"
       />
 
-      <Modal open={!!detailRow} onClose={() => setDetailRow(null)} title={`${displayName}详情`}>
+      <Modal
+        open={!!detailRow}
+        onClose={() => setDetailRow(null)}
+        title={`${displayName}详情`}
+      >
         {detailRow && (
           <div className="sl-ui-info-grid">
             {columns.map((col) => (
               <div key={col.key} className="sl-ui-info-row">
                 <span className="sl-ui-info-label">{col.label}</span>
-                <span className="sl-ui-info-value">{formatDetailValue((detailRow as Record<string, unknown>)[col.key])}</span>
+                <span className="sl-ui-info-value">
+                  {formatDetailValue(
+                    (detailRow as Record<string, unknown>)[col.key],
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -558,7 +662,7 @@ function ReferenceFieldInput({
   placeholder?: string;
   disabled?: boolean;
 }) {
-  const { options: searched, loading, error } = useReferenceOptions(spec, '');
+  const { options: searched, loading, error } = useReferenceOptions(spec, "");
   const { option: byIdOption } = useReferenceOptionById(spec, value || null);
 
   // Echo merge: append when searched does not contain the current value and the byId resolution succeeded
@@ -574,13 +678,17 @@ function ReferenceFieldInput({
     <div className="sl-ui-reference-field">
       <Select
         value={value || null}
-        onChange={(v) => onChange(v ?? '')}
+        onChange={(v) => onChange(v ?? "")}
         options={options}
-        placeholder={placeholder ?? '请选择'}
+        placeholder={placeholder ?? "请选择"}
         disabled={disabled || loading}
       />
       {loading && <span className="sl-ui-reference-field-status">加载中…</span>}
-      {!loading && error && <span className="sl-ui-reference-field-status sl-ui-reference-field-status--error">{error}</span>}
+      {!loading && error && (
+        <span className="sl-ui-reference-field-status sl-ui-reference-field-status--error">
+          {error}
+        </span>
+      )}
     </div>
   );
 }
@@ -616,7 +724,7 @@ function FileFieldInput({
   const handleProbe = useCallback(async () => {
     if (!probe) return;
     if (!path.trim()) {
-      setProbeError('请先填写文件路径');
+      setProbeError("请先填写文件路径");
       return;
     }
     setProbing(true);
@@ -624,20 +732,24 @@ function FileFieldInput({
     try {
       const meta = await probe(path.trim());
       if (meta.size == null && meta.mime == null && meta.fileName == null) {
-        setProbeError('无法识别该路径（不存在或不可读）');
+        setProbeError("无法识别该路径（不存在或不可读）");
         return;
       }
       const patch: Record<string, string | undefined> = {};
-      if (autoFill?.mimeTypeKey && meta.mime != null) patch[autoFill.mimeTypeKey] = meta.mime;
-      if (autoFill?.sizeBytesKey && meta.size != null) patch[autoFill.sizeBytesKey] = String(meta.size);
-      if (autoFill?.sourceTypeKey && autoFill.sourceTypeValue) patch[autoFill.sourceTypeKey] = autoFill.sourceTypeValue;
+      if (autoFill?.mimeTypeKey && meta.mime != null)
+        patch[autoFill.mimeTypeKey] = meta.mime;
+      if (autoFill?.sizeBytesKey && meta.size != null)
+        patch[autoFill.sizeBytesKey] = String(meta.size);
+      if (autoFill?.sourceTypeKey && autoFill.sourceTypeValue)
+        patch[autoFill.sourceTypeKey] = autoFill.sourceTypeValue;
       if (autoFill?.titleKey && meta.fileName != null) {
         const current = formValues[autoFill.titleKey];
-        if (!current || String(current).length === 0) patch[autoFill.titleKey] = meta.fileName;
+        if (!current || String(current).length === 0)
+          patch[autoFill.titleKey] = meta.fileName;
       }
       onAutoFill(patch);
     } catch (e: unknown) {
-      setProbeError((e as Error)?.message ?? '探测失败');
+      setProbeError((e as Error)?.message ?? "探测失败");
     } finally {
       setProbing(false);
     }
@@ -651,11 +763,20 @@ function FileFieldInput({
         placeholder="如 /home/user/materials/report.pdf"
       />
       {probe && (
-        <Button variant="secondary" size="md" onClick={handleProbe} disabled={probing}>
-          {probing ? '识别中…' : '识别文件'}
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={handleProbe}
+          disabled={probing}
+        >
+          {probing ? "识别中…" : "识别文件"}
         </Button>
       )}
-      {probeError && <span className="sl-ui-file-field-status sl-ui-file-field-status--error">{probeError}</span>}
+      {probeError && (
+        <span className="sl-ui-file-field-status sl-ui-file-field-status--error">
+          {probeError}
+        </span>
+      )}
     </div>
   );
 }

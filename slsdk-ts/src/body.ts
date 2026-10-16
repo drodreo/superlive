@@ -1,4 +1,4 @@
-import type { RequestBody } from './types';
+import type { RequestBody } from "./types";
 
 /** Result of adaptBody: body goes into the fetch init, contentType (if present) becomes the Content-Type header */
 export interface AdaptedBody {
@@ -21,19 +21,19 @@ export function adaptBody(body?: RequestBody): AdaptedBody {
   }
   // File is a Blob subtype, covered by the same branch; an empty type falls back to generic binary
   if (body instanceof Blob) {
-    return { body, contentType: body.type || 'application/octet-stream' };
+    return { body, contentType: body.type || "application/octet-stream" };
   }
   if (body instanceof ReadableStream) {
-    return { body, contentType: 'application/octet-stream' };
+    return { body, contentType: "application/octet-stream" };
   }
   if (body instanceof ArrayBuffer) {
-    return { body, contentType: 'application/octet-stream' };
+    return { body, contentType: "application/octet-stream" };
   }
   if (body instanceof Uint8Array) {
     // Since TS 5.7 lib.dom narrows BodyInit to Uint8Array<ArrayBuffer>, while runtime fetch accepts any
     // Uint8Array; a pure type-level difference, the same kind of local exemption as the duplex assertion in client.ts
-    return { body: body as BodyInit, contentType: 'application/octet-stream' };
+    return { body: body as BodyInit, contentType: "application/octet-stream" };
   }
   // Remaining shapes (object/array/string/number/boolean/null) all go through the JSON wire format
-  return { body: JSON.stringify(body), contentType: 'application/json' };
+  return { body: JSON.stringify(body), contentType: "application/json" };
 }

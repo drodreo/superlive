@@ -1,9 +1,9 @@
 /**
  * FormDialog - form dialog component (the superlive privatized edition, copy hardcoded in Chinese).
  */
-import type { ReactNode } from 'react';
-import { Modal } from './Modal';
-import { Button } from './Button';
+import type { ReactNode } from "react";
+import { Modal } from "./Modal";
+import { Button } from "./Button";
 
 export interface FormDialogProps {
   open: boolean;
@@ -23,8 +23,8 @@ export function FormDialog({
   onSubmit,
   title,
   children,
-  submitText = '保存',
-  cancelText = '取消',
+  submitText = "保存",
+  cancelText = "取消",
   loading,
   submitDisabled,
 }: FormDialogProps) {
@@ -35,7 +35,12 @@ export function FormDialog({
       title={title}
       footer={
         <>
-          <Button variant="secondary" size="md" onClick={onClose} disabled={loading}>
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={onClose}
+            disabled={loading}
+          >
             {cancelText}
           </Button>
           <Button
@@ -44,7 +49,7 @@ export function FormDialog({
             onClick={onSubmit}
             disabled={loading || submitDisabled}
           >
-            {loading ? '保存中…' : submitText}
+            {loading ? "保存中…" : submitText}
           </Button>
         </>
       }

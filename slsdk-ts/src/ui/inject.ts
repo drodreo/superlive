@@ -8,10 +8,10 @@
  * Reference counting: components consuming the ui facility simultaneously share one <style> node;
  * it is removed only when the last consumer unmounts; React StrictMode's mount→cleanup→mount sequence is idempotent.
  */
-import { useEffect } from 'react';
-import { uiCssText } from './css';
+import { useEffect } from "react";
+import { uiCssText } from "./css";
 
-const STYLE_ID = 'sl-ui-shared-styles';
+const STYLE_ID = "sl-ui-shared-styles";
 
 let refCount = 0;
 
@@ -23,7 +23,7 @@ export function injectUiCss(): void {
     // The host already has a node with the same id (leftover from an abnormal path, e.g. hot reload) — reuse it instead of recreating
     return;
   }
-  const style = document.createElement('style');
+  const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = uiCssText;
   document.head.appendChild(style);

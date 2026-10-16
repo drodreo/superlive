@@ -1,0 +1,5 @@
+dist
+src-tauri/target
+pnpm-lock.yaml
+public/vendor/slsdk.js
+src/vendor

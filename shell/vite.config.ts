@@ -1,8 +1,8 @@
-import { defineConfig, type Plugin } from 'vite';
-import react from '@vitejs/plugin-react';
-import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // package.json is type: module, so the vite config loads as ESM — no __dirname
 const root = dirname(fileURLToPath(import.meta.url));
@@ -29,18 +29,18 @@ const root = dirname(fileURLToPath(import.meta.url));
 // transformRequest compiles the shim sources on the fly; dev has no bundle
 // stage and thus no tree-shaking problem).
 const vendorEntries = {
-  react: resolve(root, 'src/vendor/react.ts'),
-  'react-dom': resolve(root, 'src/vendor/react-dom.ts'),
-  'react-dom-client': resolve(root, 'src/vendor/react-dom-client.ts'),
-  'react-jsx-runtime': resolve(root, 'src/vendor/react-jsx-runtime.ts'),
-  'react-jsx-dev-runtime': resolve(root, 'src/vendor/react-jsx-dev-runtime.ts'),
+  react: resolve(root, "src/vendor/react.ts"),
+  "react-dom": resolve(root, "src/vendor/react-dom.ts"),
+  "react-dom-client": resolve(root, "src/vendor/react-dom-client.ts"),
+  "react-jsx-runtime": resolve(root, "src/vendor/react-jsx-runtime.ts"),
+  "react-jsx-dev-runtime": resolve(root, "src/vendor/react-jsx-dev-runtime.ts"),
 };
 
 // The slsdk-ts ui entry source (@shell/sdk/ui): shared UI facilities
 // (component families/hooks/CSS contract facilities). CSS is carried in a TS
 // template string (css.ts's uiCssText), so the source module graph is pure
 // JS/TS and direct esbuild bundling has no CSS extraction problem.
-const SLSDK_UI_ENTRY = resolve(root, '../slsdk-ts/src/ui/index.ts');
+const SLSDK_UI_ENTRY = resolve(root, "../slsdk-ts/src/ui/index.ts");
 // Whitelisted bare imports kept in the ui artifact (aligned with slsdk-ts
 // rslib externals: whitelisted shared libraries are never inlined, preventing
 // duplicate instances). The current ui module graph imports react/react-dom;
@@ -48,7 +48,7 @@ const SLSDK_UI_ENTRY = resolve(root, '../slsdk-ts/src/ui/index.ts');
 // contract: components register namespaces into the host's shared instance);
 // rxjs is aligned with the configuration preemptively so a future
 // hooks-driven rxjs import is not inlined into a second instance.
-const SLSDK_UI_EXTERNAL = ['react', 'react-dom', 'rxjs', 'i18next'];
+const SLSDK_UI_EXTERNAL = ["react", "react-dom", "rxjs", "i18next"];
 
 // Dev middleware: the import map's URLs (/vendor/*.js) have no build
 // artifacts in dev mode, so vite's transformRequest compiles the shim sources
@@ -69,11 +69,11 @@ const SLSDK_UI_EXTERNAL = ['react', 'react-dom', 'rxjs', 'i18next'];
 // source is the slsdk-ts source in both cases.
 const devVendorEntries: Record<string, string> = {
   ...vendorEntries,
-  rxjs: resolve(root, 'src/vendor/rxjs.ts'),
+  rxjs: resolve(root, "src/vendor/rxjs.ts"),
   // Shared i18n singletons (the component i18n contract): shell, sdk-ui
   // and module-tier components all resolve the same i18next instance
-  i18next: resolve(root, 'src/vendor/i18next.ts'),
-  'react-i18next': resolve(root, 'src/vendor/react-i18next.ts'),
+  i18next: resolve(root, "src/vendor/i18next.ts"),
+  "react-i18next": resolve(root, "src/vendor/react-i18next.ts"),
 };
 
 // The @shell/sdk/ui dev artifact: esbuild in-memory direct bundling
@@ -84,29 +84,29 @@ const devVendorEntries: Record<string, string> = {
 // new artifact (no cache; direct bundling is ms-scale, negligible cost for a
 // low-frequency change scenario).
 async function bundleSlsdkUiForDev(): Promise<string> {
-  const esbuild = await import('esbuild');
+  const esbuild = await import("esbuild");
   const result = await esbuild.build({
-    entryPoints: { 'vendor/slsdk-ui': SLSDK_UI_ENTRY },
+    entryPoints: { "vendor/slsdk-ui": SLSDK_UI_ENTRY },
     bundle: true,
-    format: 'esm',
+    format: "esm",
     // JSX uses the automatic runtime (the artifact imports
     // "react/jsx-runtime", already a key in the import map); declared
     // explicitly so we don't depend on the esbuild version's default
-    jsx: 'automatic',
+    jsx: "automatic",
     external: SLSDK_UI_EXTERNAL,
-    outdir: resolve(root, 'dist'),
+    outdir: resolve(root, "dist"),
     write: false,
-    logLevel: 'silent',
+    logLevel: "silent",
   });
-  const file = result.outputFiles?.find((f) => f.path.endsWith('slsdk-ui.js'));
-  if (!file) throw new Error('slsdk-ui dev bundle output missing');
+  const file = result.outputFiles?.find((f) => f.path.endsWith("slsdk-ui.js"));
+  if (!file) throw new Error("slsdk-ui dev bundle output missing");
   return file.text;
 }
 
 function vendorDevServer(): Plugin {
   return {
-    name: 'vendor-dev-server',
-    apply: 'serve',
+    name: "vendor-dev-server",
+    apply: "serve",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const match = req.url?.match(/^\/vendor\/([\w.-]+)\.js(?:\?.*)?$/);
@@ -114,14 +114,14 @@ function vendorDevServer(): Plugin {
         // @shell/sdk/ui: esbuild in-memory direct bundling (transformRequest
         // does not apply to a module graph with relative submodules, see the
         // devVendorEntries comment)
-        if (match[1] === 'slsdk-ui') {
+        if (match[1] === "slsdk-ui") {
           bundleSlsdkUiForDev()
             .then((code) => {
               res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/javascript');
+              res.setHeader("Content-Type", "application/javascript");
               // Components loading vendors via dynamic import (cross-origin)
               // also need CORS to allow it
-              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.setHeader("Access-Control-Allow-Origin", "*");
               res.end(code);
             })
             .catch(() => {
@@ -141,10 +141,10 @@ function vendorDevServer(): Plugin {
               return;
             }
             res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/javascript');
+            res.setHeader("Content-Type", "application/javascript");
             // Components loading vendors via dynamic import (cross-origin)
             // also need CORS to allow it
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader("Access-Control-Allow-Origin", "*");
             res.end(result.code);
           })
           .catch(() => {
@@ -168,19 +168,19 @@ function vendorDevServer(): Plugin {
 // shell and components are rewritten by vite to the same pre-bundled
 // dependency, so singletons hold naturally.)
 const WHITELIST_IMPORTS = [
-  'react',
-  'react/jsx-runtime',
-  'react/jsx-dev-runtime',
-  'react-dom',
-  'react-dom/client',
-  'rxjs',
+  "react",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+  "react-dom",
+  "react-dom/client",
+  "rxjs",
   // Shared i18n singletons (the component i18n contract): the shell's own
   // i18n init, the sdk-ui registerI18n helper and module-tier components'
   // useTranslation all resolve the same instances via the import map —
   // locale switches propagate everywhere, and components register their
   // namespaces into the host instance (no per-component copies)
-  'i18next',
-  'react-i18next',
+  "i18next",
+  "react-i18next",
 ];
 
 // Direct-build specs for the react-family shims. For the singleton design see
@@ -193,11 +193,11 @@ const WHITELIST_IMPORTS = [
 // independently with each react-dom-family body (each artifact's module graph
 // is self-contained; no mutable state is shared between them).
 const REACT_VENDOR_SPECS = [
-  { out: 'react', pkg: 'react' },
-  { out: 'react-dom', pkg: 'react-dom' },
-  { out: 'react-dom-client', pkg: 'react-dom/client' },
-  { out: 'react-jsx-runtime', pkg: 'react/jsx-runtime' },
-  { out: 'react-jsx-dev-runtime', pkg: 'react/jsx-dev-runtime' },
+  { out: "react", pkg: "react" },
+  { out: "react-dom", pkg: "react-dom" },
+  { out: "react-dom-client", pkg: "react-dom/client" },
+  { out: "react-jsx-runtime", pkg: "react/jsx-runtime" },
+  { out: "react-jsx-dev-runtime", pkg: "react/jsx-dev-runtime" },
 ];
 
 // The react-family shim contents are generated dynamically by enumerating at
@@ -215,13 +215,13 @@ const REACT_VENDOR_SPECS = [
 const requireFromShell = createRequire(import.meta.url);
 function cjsShimSource(pkg: string): string {
   const named = Object.keys(requireFromShell(pkg)).filter(
-    (k) => /^[A-Za-z_$][\w$]*$/.test(k) && k !== 'default',
+    (k) => /^[A-Za-z_$][\w$]*$/.test(k) && k !== "default",
   );
   return [
     `import vendor from '${pkg}';`,
     `export default vendor;`,
-    `export { ${named.join(', ')} } from '${pkg}';`,
-  ].join('\n');
+    `export { ${named.join(", ")} } from '${pkg}';`,
+  ].join("\n");
 }
 
 // react singleton plugin: esbuild's external option does not work in this
@@ -235,24 +235,24 @@ function cjsShimSource(pkg: string): string {
 // lock the singleton) and forwards named exports natively; the entry shim's
 // import-statement is not intercepted, so the react body inlines normally
 // into the react.js artifact.
-function virtualReactExternal(): import('esbuild').Plugin {
+function virtualReactExternal(): import("esbuild").Plugin {
   return {
-    name: 'virtual-react-external',
+    name: "virtual-react-external",
     setup(build) {
       build.onResolve({ filter: /^react$/ }, (args) => {
         // An import inside the virtual forwarding module: mark external →
         // bare import (import map singleton)
-        if (args.namespace === 'react-virtual') {
-          return { path: 'react', external: true };
+        if (args.namespace === "react-virtual") {
+          return { path: "react", external: true };
         }
         // A require inside a react-dom-family body: forward to the virtual module
-        if (args.kind === 'require-call') {
-          return { path: 'react', namespace: 'react-virtual' };
+        if (args.kind === "require-call") {
+          return { path: "react", namespace: "react-virtual" };
         }
         // The entry shim's import-statement: resolve normally; react body inlines
         return null;
       });
-      build.onLoad({ filter: /.*/, namespace: 'react-virtual' }, () => ({
+      build.onLoad({ filter: /.*/, namespace: "react-virtual" }, () => ({
         contents: `import vendor from "react";\nexport default vendor;\nexport * from "react";\n`,
         resolveDir: root,
       }));
@@ -267,23 +267,23 @@ function virtualReactExternal(): import('esbuild').Plugin {
 // vite dependency: zero new packages.
 function esbuildDirectBundle(): Plugin {
   return {
-    name: 'esbuild-direct-bundle',
-    apply: 'build',
+    name: "esbuild-direct-bundle",
+    apply: "build",
     async closeBundle() {
-      const esbuild = await import('esbuild');
-      const base: import('esbuild').BuildOptions = {
+      const esbuild = await import("esbuild");
+      const base: import("esbuild").BuildOptions = {
         bundle: true,
-        format: 'esm',
-        outdir: resolve(root, 'dist'),
+        format: "esm",
+        outdir: resolve(root, "dist"),
         // Browsers have no process: react-family package entries branch on
         // NODE_ENV to pick an implementation, which must be statically
         // eliminated — otherwise the artifact throws ReferenceError on load
         // and both dev/prod implementations end up in the artifact. rxjs and
         // slsdk-ui have no references to it; harmless.
-        define: { 'process.env.NODE_ENV': '"production"' },
-        logLevel: 'silent',
+        define: { "process.env.NODE_ENV": '"production"' },
+        logLevel: "silent",
       };
-      await esbuild.build({ ...base, entryPoints: { 'vendor/rxjs': 'rxjs' } });
+      await esbuild.build({ ...base, entryPoints: { "vendor/rxjs": "rxjs" } });
       // Shared i18n singletons: i18next (zero-dependency) bundles whole;
       // react-i18next keeps react + i18next external (bare imports → the
       // import map locks them to the singletons). The banner on the i18next
@@ -295,27 +295,27 @@ function esbuildDirectBundle(): Plugin {
       // import (the import map routes it to the same singleton).
       await esbuild.build({
         ...base,
-        entryPoints: { 'vendor/i18next': 'i18next' },
-        external: ['react'],
+        entryPoints: { "vendor/i18next": "i18next" },
+        external: ["react"],
         banner: {
           js: [
             'import * as __require_shim_react from "react";',
-            'window.require = (id) => {',
+            "window.require = (id) => {",
             '  if (id === "react") return __require_shim_react;',
             `  throw new Error('require("' + id + '") is not an import-mapped external');`,
-            '};',
-          ].join('\n'),
+            "};",
+          ].join("\n"),
         },
       });
       await esbuild.build({
         ...base,
-        entryPoints: { 'vendor/react-i18next': 'react-i18next' },
-        external: ['react', 'i18next'],
+        entryPoints: { "vendor/react-i18next": "react-i18next" },
+        external: ["react", "i18next"],
       });
       await esbuild.build({
         ...base,
-        entryPoints: { 'vendor/slsdk-ui': SLSDK_UI_ENTRY },
-        jsx: 'automatic',
+        entryPoints: { "vendor/slsdk-ui": SLSDK_UI_ENTRY },
+        jsx: "automatic",
         external: SLSDK_UI_EXTERNAL,
       });
       for (const spec of REACT_VENDOR_SPECS) {
@@ -345,7 +345,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(root, 'index.html'),
+        main: resolve(root, "index.html"),
       },
       // Whitelisted libraries stay external to shell code (bare imports are
       // handed to the import map, see the WHITELIST_IMPORTS comment). Vendor
@@ -355,8 +355,8 @@ export default defineConfig({
         return WHITELIST_IMPORTS.includes(source);
       },
       output: {
-        chunkFileNames: 'assets/chunk-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: "assets/chunk-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]",
       },
     },
   },

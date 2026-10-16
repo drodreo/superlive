@@ -15,11 +15,11 @@
 //! - A component crashing and exiting is handled by supervise (log + registry
 //!   removal + settled-state persistence); no automatic restart.
 
+use crate::AppState;
 use crate::config::HEALTH_TIMEOUT;
 use crate::config_plane::{self, ComponentMeta, ComponentState};
 use crate::lifecycle;
 use crate::registry;
-use crate::AppState;
 use slsdk_rs::ComponentManifest;
 use std::path::PathBuf;
 use std::sync::Arc;

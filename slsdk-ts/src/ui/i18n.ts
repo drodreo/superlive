@@ -8,7 +8,7 @@
 // Registered namespaces stay for the session (translation bundles are tiny;
 // no unload cycle).
 
-import i18next from 'i18next';
+import i18next from "i18next";
 
 /** A component namespace's resources: locale → key → text (nested objects allowed). */
 export type ComponentI18nResources = Record<string, Record<string, unknown>>;
@@ -17,7 +17,10 @@ export type ComponentI18nResources = Record<string, Record<string, unknown>>;
  * Register a component namespace's resources (every locale, upfront) into
  * the shared i18next instance. Call once at component module load.
  */
-export function registerI18n(namespace: string, resources: ComponentI18nResources): void {
+export function registerI18n(
+  namespace: string,
+  resources: ComponentI18nResources,
+): void {
   for (const [lng, bundle] of Object.entries(resources)) {
     i18next.addResourceBundle(lng, namespace, bundle, true, true);
   }

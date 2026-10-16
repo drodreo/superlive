@@ -2,7 +2,7 @@
  * SearchBar - search box component (debounced).
  * lucide-react is not on the whitelist: the Search/SlidersHorizontal icons are replaced with inline SVG.
  */
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
 export interface SearchBarProps {
   value: string;
@@ -16,7 +16,17 @@ export interface SearchBarProps {
 
 function SearchIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sl-ui-search-icon">
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="sl-ui-search-icon"
+    >
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
@@ -25,7 +35,16 @@ function SearchIcon() {
 
 function SlidersIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <line x1="4" y1="21" x2="4" y2="14" />
       <line x1="4" y1="10" x2="4" y2="3" />
       <line x1="12" y1="21" x2="12" y2="12" />
@@ -47,7 +66,7 @@ export function SearchBar({
   showAdvanced = false,
   onAdvanced,
 }: SearchBarProps) {
-  const finalPlaceholder = placeholder ?? '搜索…';
+  const finalPlaceholder = placeholder ?? "搜索…";
   const [localValue, setLocalValue] = useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -64,9 +83,9 @@ export function SearchBar({
   }
 
   function handleClear() {
-    setLocalValue('');
+    setLocalValue("");
     if (timerRef.current) clearTimeout(timerRef.current);
-    onChange('');
+    onChange("");
   }
 
   // Integrated mode: advanced filter embedded to the right of the search box (one visual unit, no divider)
@@ -89,7 +108,11 @@ export function SearchBar({
             aria-label="清空"
             aria-hidden={!localValue}
             tabIndex={localValue ? 0 : -1}
-            style={!localValue ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+            style={
+              !localValue
+                ? { visibility: "hidden", pointerEvents: "none" }
+                : undefined
+            }
           >
             ✕
           </button>
@@ -125,7 +148,11 @@ export function SearchBar({
         aria-label="清空"
         aria-hidden={!localValue}
         tabIndex={localValue ? 0 : -1}
-        style={!localValue ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+        style={
+          !localValue
+            ? { visibility: "hidden", pointerEvents: "none" }
+            : undefined
+        }
       >
         ✕
       </button>

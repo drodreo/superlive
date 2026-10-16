@@ -524,7 +524,9 @@ fn next_steps(req: &ScaffoldRequest, root: &Path) -> Vec<String> {
     let mut steps = Vec::new();
     let backend = match req.template {
         BackendTemplate::Cargo => {
-            format!("backend : SL_ENDPOINT=tcp:127.0.0.1:{port} cargo run --manifest-path {root}/server/Cargo.toml")
+            format!(
+                "backend : SL_ENDPOINT=tcp:127.0.0.1:{port} cargo run --manifest-path {root}/server/Cargo.toml"
+            )
         }
         BackendTemplate::Deno => {
             format!(

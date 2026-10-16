@@ -4,22 +4,22 @@
 // resources) derives from SHELL_ORIGIN;
 // hand-joining addresses inside component code is forbidden.
 
-import { invoke } from '@tauri-apps/api/core';
-import { defer, from, type Observable } from 'rxjs';
+import { invoke } from "@tauri-apps/api/core";
+import { defer, from, type Observable } from "rxjs";
 
 // The shell's embedded HTTP service endpoint (consistent with src-tauri
 // config::SHELL_PORT).
 // The shell webview's origin is cross-origin to it: component ESM dynamic
 // loading, iframes, and API fetches all use the full address, with cross-origin
 // allowed by the shell service's CORS middleware.
-export const SHELL_ORIGIN = 'http://127.0.0.1:39876';
+export const SHELL_ORIGIN = "http://127.0.0.1:39876";
 
 // ---------- View types aligned with the Rust ComponentView (commands.rs) ----------
 // Field names stay snake_case: consistent with the manifest contract fields
 // (slsdk_rs's serde form).
 
 export interface UiDeclaration {
-  ui_type: 'module' | 'iframe';
+  ui_type: "module" | "iframe";
   entry: string;
 }
 
@@ -38,7 +38,7 @@ export interface RouteDeclaration {
 }
 
 /** Where a registered component's body lives (disk envelope source field). */
-export type ComponentSource = 'installed' | 'dev';
+export type ComponentSource = "installed" | "dev";
 
 export interface ComponentInfo {
   id: string;
@@ -62,7 +62,7 @@ let tokenPromise: Promise<string> | null = null;
 
 /** Shell-level token (the shell_token command). Cached after the first call; later calls reuse the same Promise. */
 export function shellToken(): Promise<string> {
-  tokenPromise ??= invoke<string>('shell_token');
+  tokenPromise ??= invoke<string>("shell_token");
   return tokenPromise;
 }
 
@@ -70,32 +70,35 @@ export function shellToken(): Promise<string> {
 // Wrapped in defer: lazy evaluation + a fresh start per subscription (an rxjs
 // convention: subscribing is executing).
 
-function invoke$<T>(cmd: string, args?: Record<string, unknown>): Observable<T> {
+function invoke$<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Observable<T> {
   return defer(() => from(invoke<T>(cmd, args)));
 }
 
 /** Installed component list (on-disk registration + running state merged). */
 export const listComponents = (): Observable<ComponentInfo[]> =>
-  invoke$<ComponentInfo[]>('list_components');
+  invoke$<ComponentInfo[]>("list_components");
 
 /** Install a component package (zip disk path). */
 export const installComponent = (zipPath: string): Observable<ComponentInfo> =>
-  invoke$<ComponentInfo>('install_component', { zipPath });
+  invoke$<ComponentInfo>("install_component", { zipPath });
 
 /** Uninstall a component (stop the process first, then delete data). */
 export const uninstallComponent = (id: string): Observable<void> =>
-  invoke$<void>('uninstall_component', { id });
+  invoke$<void>("uninstall_component", { id });
 
 // ---------- Component creation (the built-in creation flow's command; the dialog lands in phase 3b) ----------
 
 /** Component shape (the create dialog's three options). */
-export type ComponentShape = 'frontend-backend' | 'frontend' | 'backend';
+export type ComponentShape = "frontend-backend" | "frontend" | "backend";
 
 /** Backend runtime template for server shapes (the Rust BackendTemplate mirror). */
-export type BackendTemplate = 'cargo' | 'deno' | 'bun';
+export type BackendTemplate = "cargo" | "deno" | "bun";
 
 /** How the SDK is consumed: registry = crates.io/npm versions; local = path dependencies pointing at a superlive checkout. */
-export type SdkMode = 'registry' | 'local';
+export type SdkMode = "registry" | "local";
 
 /** One localized-title row of the create dialog (the Rust DisplayTitleInput mirror). */
 export interface DisplayTitleInput {
@@ -134,18 +137,20 @@ export interface CreateComponentResult {
  * "..."}` — the dialog branches on kind (form errors vs world-state conflicts
  * vs runtime faults).
  */
-export const createComponent = (args: CreateComponentArgs): Observable<CreateComponentResult> =>
-  invoke$<CreateComponentResult>('create_component', { args });
+export const createComponent = (
+  args: CreateComponentArgs,
+): Observable<CreateComponentResult> =>
+  invoke$<CreateComponentResult>("create_component", { args });
 
 // ---------- Component import (architecture.md "Creation flow": importing an existing project) ----------
 
 /** The kind of one conservative gap-filling correction (the Rust UpgradeKind mirror). */
 export type UpgradeKind =
-  | 'derive_titles'
-  | 'refresh_version'
-  | 'fill_min_shell_version'
-  | 'add_build_script'
-  | 'add_readme';
+  | "derive_titles"
+  | "refresh_version"
+  | "fill_min_shell_version"
+  | "add_build_script"
+  | "add_readme";
 
 /** One upgrade-list entry: the correction kind plus the precise English detail (rendered verbatim). */
 export interface UpgradeItem {
@@ -161,12 +166,12 @@ export interface UpgradeItem {
  */
 export type ImportOutcome =
   | {
-      status: 'registered';
+      status: "registered";
       component: ComponentInfo;
       project_dir: string;
       next_steps: string[];
     }
-  | { status: 'upgrade_required'; items: UpgradeItem[] };
+  | { status: "upgrade_required"; items: UpgradeItem[] };
 
 /**
  * Import an existing project directory as a dev component. Phase 1 inspects
@@ -175,22 +180,25 @@ export type ImportOutcome =
  * confirmation. Unfixable findings reject with the creation flow's JSON
  * `{"kind": "invalid_argument" | "conflict" | "internal", "message"}` envelope.
  */
-export const importComponent = (dir: string, applyUpgrades: boolean): Observable<ImportOutcome> =>
-  invoke$<ImportOutcome>('import_component', { dir, applyUpgrades });
+export const importComponent = (
+  dir: string,
+  applyUpgrades: boolean,
+): Observable<ImportOutcome> =>
+  invoke$<ImportOutcome>("import_component", { dir, applyUpgrades });
 
 /** Start a component backend. */
 export const startComponent = (id: string): Observable<void> =>
-  invoke$<void>('start_component', { id });
+  invoke$<void>("start_component", { id });
 
 /** Stop a component backend. */
 export const stopComponent = (id: string): Observable<void> =>
-  invoke$<void>('stop_component', { id });
+  invoke$<void>("stop_component", { id });
 
 // ---------- Shell endpoint URLs and /api requests ----------
 
 /** Component UI static asset URL (/comps/{id}/{entry}; shared by module dynamic import and iframe). */
 export function componentAssetUrl(id: string, entry: string): string {
-  return `${SHELL_ORIGIN}/comps/${id}/${entry.replace(/^\/+/, '')}`;
+  return `${SHELL_ORIGIN}/comps/${id}/${entry.replace(/^\/+/, "")}`;
 }
 
 /**
@@ -199,11 +207,17 @@ export function componentAssetUrl(id: string, entry: string): string {
  * This is the in-shell equivalent of @shell/sdk — the body semantics are
  * exactly the same as native fetch (a raw byte stream).
  */
-export async function shellApi(path: string, init?: RequestInit): Promise<Response> {
+export async function shellApi(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
   const token = await shellToken();
   const headers = new Headers(init?.headers);
-  headers.set('Authorization', `Bearer ${token}`);
-  return fetch(`${SHELL_ORIGIN}/api/${path.replace(/^\/+/, '')}`, { ...init, headers });
+  headers.set("Authorization", `Bearer ${token}`);
+  return fetch(`${SHELL_ORIGIN}/api/${path.replace(/^\/+/, "")}`, {
+    ...init,
+    headers,
+  });
 }
 
 // ---------- Configuration plane (architecture.md "Configuration plane" contract) ----------
@@ -217,7 +231,7 @@ export interface ConfigField {
   key: string;
   /** i18n key or raw text (the config page looks it up in the i18n map, falling back to the raw text when missing). */
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'select' | 'datetime';
+  type: "string" | "number" | "boolean" | "select" | "datetime";
   default: unknown;
   required: boolean;
   /** Option enum for the select type. */
@@ -240,14 +254,14 @@ export interface ComponentConfig {
 }
 
 /** The component lifecycle's four states (the shell-side state machine). */
-export type ComponentState = 'needs-config' | 'ready' | 'running' | 'stopped';
+export type ComponentState = "needs-config" | "ready" | "running" | "stopped";
 
 /** Launch policy (component-level, persisted in the shell-side registry, not in the component manifest). */
-export type LaunchPolicy = 'auto' | 'manual';
+export type LaunchPolicy = "auto" | "manual";
 
 /** Component config declaration + current values (the config page's data source). */
 export const getComponentConfig = (id: string): Observable<ComponentConfig> =>
-  invoke$<ComponentConfig>('get_component_config', { id });
+  invoke$<ComponentConfig>("get_component_config", { id });
 
 export interface WriteConfigResult {
   /** Whether this write changed a restart_required entry (a running component needs a restart to take effect). */
@@ -262,15 +276,18 @@ export interface WriteConfigResult {
 export const writeComponentConfig = (
   id: string,
   values: Record<string, string | number | boolean>,
-): Observable<WriteConfigResult> => invoke$<WriteConfigResult>('write_component_config', { id, values });
+): Observable<WriteConfigResult> =>
+  invoke$<WriteConfigResult>("write_component_config", { id, values });
 
 /** The component's current lifecycle state. */
 export const getComponentState = (id: string): Observable<ComponentState> =>
-  invoke$<ComponentState>('get_component_state', { id });
+  invoke$<ComponentState>("get_component_state", { id });
 
 /** Set the component's launch policy. */
-export const setLaunchPolicy = (id: string, policy: LaunchPolicy): Observable<void> =>
-  invoke$<void>('set_launch_policy', { id, policy });
+export const setLaunchPolicy = (
+  id: string,
+  policy: LaunchPolicy,
+): Observable<void> => invoke$<void>("set_launch_policy", { id, policy });
 
 /**
  * Config i18n resource loading: picks the path for the current language from
@@ -286,7 +303,7 @@ export async function fetchConfigI18n(
   if (!i18n) return null;
   const langs = Object.keys(i18n);
   if (langs.length === 0) return null;
-  const nav = (navigator.language || '').toLowerCase();
+  const nav = (navigator.language || "").toLowerCase();
   // Language selection: exact match → prefix match (declared zh ↔ browser zh-CN) → first declared entry as fallback
   const lang =
     langs.find((l) => l.toLowerCase() === nav) ??

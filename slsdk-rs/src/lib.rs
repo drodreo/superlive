@@ -18,11 +18,11 @@ pub mod endpoint;
 pub mod manifest;
 pub mod serve;
 
-pub use config::{config_router, ConfigError, ConfigIntegration, ConfigStore, OnChangeCallback};
-pub use endpoint::{Endpoint, EndpointParseError, ENV_ENDPOINT, ENV_TOKEN};
+pub use config::{ConfigError, ConfigIntegration, ConfigStore, OnChangeCallback, config_router};
+pub use endpoint::{ENV_ENDPOINT, ENV_TOKEN, Endpoint, EndpointParseError};
 pub use manifest::{
-    verify_files, ComponentConfig, ComponentManifest, ConfigField, ConfigFieldType, FileEntry,
-    LaunchConfig, ManifestError, MenuDeclaration, RouteDeclaration, TransportCaps, UiDeclaration,
-    UiType, VerifyError,
+    ComponentConfig, ComponentManifest, ConfigField, ConfigFieldType, FileEntry, LaunchConfig,
+    ManifestError, MenuDeclaration, RouteDeclaration, TransportCaps, UiDeclaration, UiType,
+    VerifyError, verify_files,
 };
-pub use serve::{serve, serve_with_config, ServeError, ServeInfo, ShutdownHandle};
+pub use serve::{ServeError, ServeInfo, ShutdownHandle, serve, serve_with_config};

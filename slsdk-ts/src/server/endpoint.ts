@@ -17,7 +17,8 @@ export const ENV_TOKEN = "SL_TOKEN";
  * - `{ kind: "tcp" }`: HTTP over a 127.0.0.1 port (Windows, or explicit tcp descriptors) —
  *   the platform capability judgment lives at the ecosystem layer rather than the OS layer.
  */
-export type Endpoint = { kind: "uds"; path: string } | { kind: "tcp"; host: string; port: number };
+export type Endpoint =
+  { kind: "uds"; path: string } | { kind: "tcp"; host: string; port: number };
 
 /** Descriptor parse error ({@link parseEndpoint}); variants mirror slsdk-rs `EndpointParseError`. */
 export class EndpointParseError extends Error {

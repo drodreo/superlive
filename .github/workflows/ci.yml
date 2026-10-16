@@ -7,33 +7,51 @@ on:
 
 jobs:
   rust:
-    name: rust (fmt + test)
-    runs-on: ubuntu-latest
+    name: rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      # Bootstrap rustup only — the actual toolchain (channel 1.96.0 plus
+      # rustfmt/clippy) is resolved from rust-toolchain.toml on every cargo
+      # invocation, so CI runs the exact same toolchain as local development.
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Install tauri system deps
+        with:
+          workspaces: |
+            slsdk-rs
+            slscaffold
+            shell/src-tauri
+      - name: Install tauri system deps (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-      - name: slsdk-rs fmt
-        run: cargo fmt --check --manifest-path slsdk-rs/Cargo.toml
-      - name: slsdk-rs test
-        run: cargo test --manifest-path slsdk-rs/Cargo.toml
-      - name: slscaffold fmt
-        run: cargo fmt --check --manifest-path slscaffold/Cargo.toml
-      - name: slscaffold test
-        run: cargo test --manifest-path slscaffold/Cargo.toml
-      - name: shell fmt
-        run: cargo fmt --check --manifest-path shell/src-tauri/Cargo.toml
-      - name: shell test
-        run: cargo test --manifest-path shell/src-tauri/Cargo.toml
+      - name: cargo test (all three crates)
+        run: |
+          cargo test --manifest-path slsdk-rs/Cargo.toml
+          cargo test --manifest-path slscaffold/Cargo.toml
+          cargo test --manifest-path shell/src-tauri/Cargo.toml
+      # Format and lint checks run once on Linux: rustfmt/clippy behavior is
+      # pinned by rust-toolchain.toml, so one platform is authoritative.
+      - name: cargo fmt --check (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cargo fmt --check --manifest-path slsdk-rs/Cargo.toml
+          cargo fmt --check --manifest-path slscaffold/Cargo.toml
+          cargo fmt --check --manifest-path shell/src-tauri/Cargo.toml
+      - name: cargo clippy --all-targets -D warnings (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cargo clippy --all-targets --manifest-path slsdk-rs/Cargo.toml -- -D warnings
+          cargo clippy --all-targets --manifest-path slscaffold/Cargo.toml -- -D warnings
+          cargo clippy --all-targets --manifest-path shell/src-tauri/Cargo.toml -- -D warnings
 
   web:
-    name: web (typecheck + test + build)
+    name: web (format + typecheck + test + build + smoke)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,14 +65,17 @@ jobs:
           cache-dependency-path: |
             slsdk-ts/pnpm-lock.yaml
             shell/pnpm-lock.yaml
-      - name: slsdk-ts typecheck + test
+      - name: slsdk-ts format + typecheck + test
         run: |
           cd slsdk-ts
           pnpm install --frozen-lockfile
+          pnpm run format:check
           pnpm run typecheck
           pnpm test
-      - name: shell build
+      - name: shell build + format + smoke
         run: |
           cd shell
           pnpm install --frozen-lockfile
           pnpm run build
+          pnpm run format:check
+          pnpm run smoke

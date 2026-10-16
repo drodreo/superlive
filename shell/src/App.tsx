@@ -6,26 +6,33 @@
 // to the welcome page / management page / settings page / component
 // config page / component container by route.
 
-import { useEffect, useState } from 'react';
-import { getVersion } from '@tauri-apps/api/app';
-import { useTranslation } from 'react-i18next';
-import { listComponents, SHELL_ORIGIN, shellToken, type ComponentInfo } from './api';
-import { navigate, route$, type Route } from './router';
-import { componentMenuTitle, injectMenuTitles } from './i18n';
-import { ComponentConfigPage } from './ComponentConfigPage';
-import { ComponentHost } from './ComponentHost';
-import { ComponentManager } from './ComponentManager';
-import { SettingsPage } from './SettingsPage';
-import { WelcomePage } from './WelcomePage';
-import { ActivityBar, type Theme } from './ActivityBar';
-import './App.css';
+import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
+import { useTranslation } from "react-i18next";
+import {
+  listComponents,
+  SHELL_ORIGIN,
+  shellToken,
+  type ComponentInfo,
+} from "./api";
+import { navigate, route$, type Route } from "./router";
+import { componentMenuTitle, injectMenuTitles } from "./i18n";
+import { ComponentConfigPage } from "./ComponentConfigPage";
+import { ComponentHost } from "./ComponentHost";
+import { ComponentManager } from "./ComponentManager";
+import { SettingsPage } from "./SettingsPage";
+import { WelcomePage } from "./WelcomePage";
+import { ActivityBar, type Theme } from "./ActivityBar";
+import "./App.css";
 
 // Shell environment injection: component UIs read { token, origin } from
 // window.__SL_SHELL__ to make /api calls. Placed at module top level —
 // evaluation fires it, before any component mounts or the first fetch;
 // an idempotent write, since the token is the shell-level singleton.
 void shellToken().then((token) => {
-  (window as unknown as { __SL_SHELL__?: { token: string; origin: string } }).__SL_SHELL__ = {
+  (
+    window as unknown as { __SL_SHELL__?: { token: string; origin: string } }
+  ).__SL_SHELL__ = {
     token,
     origin: SHELL_ORIGIN,
   };
@@ -34,7 +41,8 @@ void shellToken().then((token) => {
 // Theme bootstrap: stamp the persisted theme on <html> at module eval —
 // ahead of React's first render, so dark-theme users get no light-mode
 // flash on launch.
-const initialTheme: Theme = localStorage.getItem('sl-theme') === 'dark' ? 'dark' : 'light';
+const initialTheme: Theme =
+  localStorage.getItem("sl-theme") === "dark" ? "dark" : "light";
 document.documentElement.dataset.theme = initialTheme;
 
 export default function App() {
@@ -46,7 +54,7 @@ export default function App() {
   const [listVersion, setListVersion] = useState(0);
   // App version for the sidebar foot — the config omits `version`, so this
   // is the Cargo.toml package version (the single version source)
-  const [version, setVersion] = useState('');
+  const [version, setVersion] = useState("");
   // App theme (light/dark); bootstrapped pre-render from localStorage
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
@@ -72,14 +80,14 @@ export default function App() {
   // Theme changes: <html data-theme> drives the palette; persist the choice
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('sl-theme', theme);
+    localStorage.setItem("sl-theme", theme);
   }, [theme]);
 
   // Component list: the dynamic menu's data source + the component page's mount info source
   useEffect(() => {
     const sub = listComponents().subscribe({
       next: setComponents,
-      error: (e) => console.error('[App] failed to read component list:', e),
+      error: (e) => console.error("[App] failed to read component list:", e),
     });
     return () => sub.unsubscribe();
   }, [route, listVersion]);
@@ -102,7 +110,9 @@ export default function App() {
   // non-running ones — the menu still shows; clicking yields feedback from the container)
   const menuComponents = components.filter((c) => c.menu);
   const activeComponent =
-    route.name === 'component' ? components.find((c) => c.namespace === route.ns) : undefined;
+    route.name === "component"
+      ? components.find((c) => c.namespace === route.ns)
+      : undefined;
 
   // Localized menu title of a component (null = no menu registration):
   // the menuTitle chain with the single-language `title` as the local fallback
@@ -112,15 +122,16 @@ export default function App() {
   // Activity-bar module title: the active context's title; the neutral
   // landing (welcome) falls back to the app name
   const moduleTitle =
-    route.name === 'components'
-      ? t('menu.components')
-      : route.name === 'settings'
-        ? t('menu.settings')
-        : route.name === 'config'
-          ? (menuTitleOf(components.find((c) => c.id === route.id)) ?? t('title.configFallback'))
-          : route.name === 'component'
+    route.name === "components"
+      ? t("menu.components")
+      : route.name === "settings"
+        ? t("menu.settings")
+        : route.name === "config"
+          ? (menuTitleOf(components.find((c) => c.id === route.id)) ??
+            t("title.configFallback"))
+          : route.name === "component"
             ? (menuTitleOf(activeComponent) ?? route.ns)
-            : 'Superlive';
+            : "Superlive";
 
   return (
     <div className="app">
@@ -133,10 +144,16 @@ export default function App() {
               <button
                 type="button"
                 key={c.id}
-                className={route.name === 'component' && route.ns === c.namespace ? 'active' : ''}
+                className={
+                  route.name === "component" && route.ns === c.namespace
+                    ? "active"
+                    : ""
+                }
                 title={title}
                 onClick={() =>
-                  navigate(`/comp/${c.namespace}/${c.routes[0]?.path.replace(/^\/+/, '') ?? ''}`)
+                  navigate(
+                    `/comp/${c.namespace}/${c.routes[0]?.path.replace(/^\/+/, "") ?? ""}`,
+                  )
                 }
               >
                 {title}
@@ -146,19 +163,19 @@ export default function App() {
           <div className="menu-foot">
             <button
               type="button"
-              className={route.name === 'components' ? 'active' : ''}
-              onClick={() => navigate('/components')}
+              className={route.name === "components" ? "active" : ""}
+              onClick={() => navigate("/components")}
             >
-              {t('menu.components')}
+              {t("menu.components")}
             </button>
             <button
               type="button"
-              className={route.name === 'settings' ? 'active' : ''}
-              onClick={() => navigate('/settings')}
+              className={route.name === "settings" ? "active" : ""}
+              onClick={() => navigate("/settings")}
             >
-              {t('menu.settings')}
+              {t("menu.settings")}
             </button>
-            <div className="menu-version">v{version || '…'}</div>
+            <div className="menu-version">v{version || "…"}</div>
           </div>
         </nav>
       </aside>
@@ -167,25 +184,29 @@ export default function App() {
         <ActivityBar
           title={moduleTitle}
           theme={theme}
-          onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+          onToggleTheme={() =>
+            setTheme((t) => (t === "light" ? "dark" : "light"))
+          }
         />
 
         <main className="content">
-          {route.name === 'home' && <WelcomePage />}
+          {route.name === "home" && <WelcomePage />}
 
-          {route.name === 'components' && (
+          {route.name === "components" && (
             <ComponentManager onChanged={() => setListVersion((v) => v + 1)} />
           )}
 
-          {route.name === 'settings' && <SettingsPage />}
+          {route.name === "settings" && <SettingsPage />}
 
-          {route.name === 'config' && <ComponentConfigPage id={route.id} />}
+          {route.name === "config" && <ComponentConfigPage id={route.id} />}
 
-          {route.name === 'component' &&
+          {route.name === "component" &&
             (activeComponent ? (
               <ComponentHost info={activeComponent} route={route.path} />
             ) : (
-              <div className="comp-error">{t('app.compNotFound', { ns: route.ns })}</div>
+              <div className="comp-error">
+                {t("app.compNotFound", { ns: route.ns })}
+              </div>
             ))}
         </main>
       </div>

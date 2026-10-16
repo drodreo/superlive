@@ -131,7 +131,9 @@ pub async fn load_meta(layout: &DataLayout, id: &str) -> Option<ComponentMeta> {
     match serde_json::from_slice(&bytes) {
         Ok(meta) => Some(meta),
         Err(e) => {
-            log::warn!("failed to parse the component meta (treating it as absent, falling back to on-the-fly derivation): {e}");
+            log::warn!(
+                "failed to parse the component meta (treating it as absent, falling back to on-the-fly derivation): {e}"
+            );
             None
         }
     }
@@ -191,7 +193,7 @@ async fn read_config_table(config_path: &Path) -> Result<toml::Value, String> {
     let text = match tokio::fs::read_to_string(config_path).await {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Ok(toml::Value::Table(toml::map::Map::new()))
+            return Ok(toml::Value::Table(toml::map::Map::new()));
         }
         Err(e) => return Err(format!("failed to read {}: {e}", config_path.display())),
     };
@@ -573,9 +575,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "not = [valid").unwrap();
-        assert!(compute_state(&manifest_plain("x", "xns"), &path)
-            .await
-            .is_err());
+        assert!(
+            compute_state(&manifest_plain("x", "xns"), &path)
+                .await
+                .is_err()
+        );
     }
 
     // ---------- Unstarted-state write (empirical check of the reused SDK ConfigStore conventions) ----------

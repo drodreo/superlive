@@ -51,7 +51,9 @@ pub enum InstallError {
 impl std::fmt::Display for InstallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            InstallError::Zip { source } => write!(f, "failed to read the install package: {source}"),
+            InstallError::Zip { source } => {
+                write!(f, "failed to read the install package: {source}")
+            }
             InstallError::Io { path, source } => write!(f, "install IO failure ({path}): {source}"),
             InstallError::MissingManifest => {
                 write!(f, "manifest.json missing from the install package root")
@@ -59,17 +61,27 @@ impl std::fmt::Display for InstallError {
             InstallError::ManifestJson { source } => {
                 write!(f, "manifest.json is not valid contract JSON: {source}")
             }
-            InstallError::InvalidManifest { source } => write!(f, "manifest validation failed: {source}"),
+            InstallError::InvalidManifest { source } => {
+                write!(f, "manifest validation failed: {source}")
+            }
             InstallError::ManifestInFiles => write!(
                 f,
                 "the files list contains manifest.json (the manifest lives outside the install directory and must not be listed in files)"
             ),
-            InstallError::Verify { source } => write!(f, "file fingerprint verification failed: {source}"),
+            InstallError::Verify { source } => {
+                write!(f, "file fingerprint verification failed: {source}")
+            }
             InstallError::NamespaceTaken { namespace } => {
-                write!(f, "the namespace is already taken by another component: {namespace}")
+                write!(
+                    f,
+                    "the namespace is already taken by another component: {namespace}"
+                )
             }
             InstallError::IncompatibleShell { min, shell } => {
-                write!(f, "the component requires shell version >= {min}, current shell version {shell}")
+                write!(
+                    f,
+                    "the component requires shell version >= {min}, current shell version {shell}"
+                )
             }
             InstallError::Join => write!(f, "the install background task terminated unexpectedly"),
         }

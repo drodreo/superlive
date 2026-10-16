@@ -17,7 +17,13 @@ export interface TextInputProps {
   className?: string;
 }
 
-export function TextInput({ value, onChange, placeholder = '', disabled = false, className = '' }: TextInputProps) {
+export function TextInput({
+  value,
+  onChange,
+  placeholder = "",
+  disabled = false,
+  className = "",
+}: TextInputProps) {
   return (
     <input
       type="text"
@@ -40,15 +46,21 @@ export interface NumberInputProps {
   className?: string;
 }
 
-export function NumberInput({ value, onChange, placeholder = '', disabled = false, className = '' }: NumberInputProps) {
+export function NumberInput({
+  value,
+  onChange,
+  placeholder = "",
+  disabled = false,
+  className = "",
+}: NumberInputProps) {
   return (
     <input
       type="number"
       className={`sl-ui-input-field ${className}`.trim()}
-      value={value ?? ''}
+      value={value ?? ""}
       onChange={(e) => {
         const v = e.target.value;
-        onChange(v === '' ? null : Number(v));
+        onChange(v === "" ? null : Number(v));
       }}
       placeholder={placeholder}
       disabled={disabled}
@@ -67,10 +79,10 @@ export interface DateTimePickerProps {
 
 /** ISO → datetime-local control value (local timezone, minute precision) */
 function toLocalString(iso: string | null): string {
-  if (!iso) return '';
+  if (!iso) return "";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
@@ -81,7 +93,12 @@ function toIso(local: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-export function DateTimePicker({ value, onChange, disabled = false, className = '' }: DateTimePickerProps) {
+export function DateTimePicker({
+  value,
+  onChange,
+  disabled = false,
+  className = "",
+}: DateTimePickerProps) {
   return (
     <input
       type="datetime-local"
@@ -99,13 +116,20 @@ export interface RangePickerProps {
   min: unknown;
   max: unknown;
   onChange: (min: unknown, max: unknown) => void;
-  type: 'datetime' | 'number';
+  type: "datetime" | "number";
   disabled?: boolean;
   className?: string;
 }
 
-export function RangePicker({ min, max, onChange, type, disabled = false, className = '' }: RangePickerProps) {
-  if (type === 'datetime') {
+export function RangePicker({
+  min,
+  max,
+  onChange,
+  type,
+  disabled = false,
+  className = "",
+}: RangePickerProps) {
+  if (type === "datetime") {
     return (
       <div className={`sl-ui-range-picker ${className}`.trim()}>
         <DateTimePicker

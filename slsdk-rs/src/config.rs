@@ -49,12 +49,12 @@
 //! parameter and no drift surface.
 
 use crate::manifest::{ConfigField, ConfigFieldType};
+use axum::Router;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
-use axum::Router;
 use serde_json::json;
 use std::collections::HashMap;
 use std::fmt;
@@ -171,7 +171,7 @@ impl ConfigStore {
                 return Err(ConfigError::Io {
                     path: self.path.clone(),
                     source,
-                })
+                });
             }
         };
         let parsed: toml::Value = toml::from_str(&text).map_err(|source| ConfigError::Parse {
@@ -268,7 +268,7 @@ async fn config_put(State(store): State<Arc<ConfigStore>>, body: Bytes) -> Respo
         Ok(v) => v,
         Err(e) => {
             return ConfigError::invalid_updates(format!("body is not valid JSON: {e}"))
-                .into_response()
+                .into_response();
         }
     };
     match store.apply(updates).await {

@@ -2,8 +2,8 @@
  * ConfirmDialog - confirmation dialog component (verbatim from superlive; the default copy was always Chinese).
  * Irreversible operations must display warning text.
  */
-import { Modal } from './Modal';
-import { Button } from './Button';
+import { Modal } from "./Modal";
+import { Button } from "./Button";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -25,8 +25,8 @@ export function ConfirmDialog({
   onConfirm,
   title,
   message,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText = "确认",
+  cancelText = "取消",
   danger,
   warningText,
   loading,
@@ -38,13 +38,21 @@ export function ConfirmDialog({
       title={title}
       footer={
         <>
-          <Button variant="secondary" size="md" onClick={onClose} disabled={loading}>
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={onClose}
+            disabled={loading}
+          >
             {cancelText}
           </Button>
           <Button
-            variant={danger ? 'danger' : 'primary'}
+            variant={danger ? "danger" : "primary"}
             size="md"
-            onClick={() => { onConfirm(); onClose(); }}
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
             loading={loading}
           >
             {confirmText}

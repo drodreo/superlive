@@ -1,12 +1,12 @@
-import { adaptBody } from './body';
-import { ApiError } from './errors';
-import { createObserve, type ObserveOptions } from './observe';
-import { SdkResponse } from './response';
-import type { ClientOptions, RequestBody, RequestOptions } from './types';
-import type { Observable } from 'rxjs';
+import { adaptBody } from "./body";
+import { ApiError } from "./errors";
+import { createObserve, type ObserveOptions } from "./observe";
+import { SdkResponse } from "./response";
+import type { ClientOptions, RequestBody, RequestOptions } from "./types";
+import type { Observable } from "rxjs";
 
 /** The five verbs in the Plane A contract vocabulary (see docs/architecture.md) */
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'HEAD';
+export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "HEAD";
 
 export interface SdkClient {
   request(
@@ -16,8 +16,16 @@ export interface SdkClient {
     opts?: RequestOptions,
   ): Promise<SdkResponse>;
   get(path: string, opts?: RequestOptions): Promise<SdkResponse>;
-  post(path: string, body?: RequestBody, opts?: RequestOptions): Promise<SdkResponse>;
-  put(path: string, body?: RequestBody, opts?: RequestOptions): Promise<SdkResponse>;
+  post(
+    path: string,
+    body?: RequestBody,
+    opts?: RequestOptions,
+  ): Promise<SdkResponse>;
+  put(
+    path: string,
+    body?: RequestBody,
+    opts?: RequestOptions,
+  ): Promise<SdkResponse>;
   delete(path: string, opts?: RequestOptions): Promise<SdkResponse>;
   head(path: string, opts?: RequestOptions): Promise<SdkResponse>;
   /** Subscribe to the shell's one-way pushes over WebSocket (auto-reconnect on disconnect; see observe.ts) */
@@ -31,16 +39,19 @@ export interface CreateClientConfig {
 
 /** Path validation lives in a non-async wrapper layer so bad concatenation throws synchronously at call time instead of surfacing as a Promise rejection */
 function assertPath(path: string): void {
-  if (!path.startsWith('/')) {
+  if (!path.startsWith("/")) {
     throw new TypeError(`path must start with /, got: ${path}`);
   }
 }
 
-export function createClient(options: ClientOptions, config?: CreateClientConfig): SdkClient {
+export function createClient(
+  options: ClientOptions,
+  config?: CreateClientConfig,
+): SdkClient {
   const fetchImpl = config?.fetchImpl ?? globalThis.fetch.bind(globalThis);
   // Trailing slash normalization: a baseUrl with a trailing slash would produce a //path double slash on concatenation (undefined gateway behavior),
   // handled once at configuration time; request and observe share the normalized result
-  const baseUrl = options.baseUrl.replace(/\/+$/, '');
+  const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const observe = createObserve(baseUrl, options.token);
 
   async function doRequest(
@@ -60,9 +71,9 @@ export function createClient(options: ClientOptions, config?: CreateClientConfig
     // Merge order: Content-Type → Authorization → user headers; writing user headers last lets them override the former two
     const headers: Record<string, string> = {};
     if (adapted.contentType) {
-      headers['Content-Type'] = adapted.contentType;
+      headers["Content-Type"] = adapted.contentType;
     }
-    headers['Authorization'] = `Bearer ${options.token}`;
+    headers["Authorization"] = `Bearer ${options.token}`;
     if (opts?.headers) {
       Object.assign(headers, opts.headers);
     }
@@ -74,7 +85,7 @@ export function createClient(options: ClientOptions, config?: CreateClientConfig
     if (adapted.body !== undefined) {
       if (adapted.body instanceof ReadableStream) {
         // The fetch spec requires streaming bodies to declare duplex explicitly; the TS RequestInit type does not cover this field yet (the only as-any exception in the repo)
-        (init as any).duplex = 'half';
+        (init as any).duplex = "half";
       }
       init.body = adapted.body;
     }
@@ -99,11 +110,11 @@ export function createClient(options: ClientOptions, config?: CreateClientConfig
 
   return {
     request,
-    get: (path, opts) => request('GET', path, undefined, opts),
-    post: (path, body, opts) => request('POST', path, body, opts),
-    put: (path, body, opts) => request('PUT', path, body, opts),
-    delete: (path, opts) => request('DELETE', path, undefined, opts),
-    head: (path, opts) => request('HEAD', path, undefined, opts),
+    get: (path, opts) => request("GET", path, undefined, opts),
+    post: (path, body, opts) => request("POST", path, body, opts),
+    put: (path, body, opts) => request("PUT", path, body, opts),
+    delete: (path, opts) => request("DELETE", path, undefined, opts),
+    head: (path, opts) => request("HEAD", path, undefined, opts),
     observe,
   };
 }

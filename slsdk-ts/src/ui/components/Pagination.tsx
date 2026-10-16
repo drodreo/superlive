@@ -1,7 +1,7 @@
 /**
  * Pagination - pagination component (verbatim from superlive).
  */
-import { Button } from './Button';
+import { Button } from "./Button";
 
 export interface PaginationProps {
   page: number;
@@ -10,8 +10,13 @@ export interface PaginationProps {
   onChange: (page: number) => void;
 }
 
-function getPageNumbers(current: number, total: number, maxVisible = 7): number[] {
-  if (total <= maxVisible) return Array.from({ length: total }, (_, i) => i + 1);
+function getPageNumbers(
+  current: number,
+  total: number,
+  maxVisible = 7,
+): number[] {
+  if (total <= maxVisible)
+    return Array.from({ length: total }, (_, i) => i + 1);
   const half = Math.floor(maxVisible / 2);
   let start = Math.max(1, current - half);
   const end = Math.min(total, start + maxVisible - 1);
@@ -25,7 +30,12 @@ function getPageNumbers(current: number, total: number, maxVisible = 7): number[
   return pages;
 }
 
-export function Pagination({ page, total, pageSize = 20, onChange }: PaginationProps) {
+export function Pagination({
+  page,
+  total,
+  pageSize = 20,
+  onChange,
+}: PaginationProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pages = getPageNumbers(page, totalPages);
 
@@ -44,18 +54,23 @@ export function Pagination({ page, total, pageSize = 20, onChange }: PaginationP
 
       {pages.map((p, idx) =>
         p === -1 ? (
-          <span key={`ellipsis-${idx}`} style={{ color: 'var(--sl-ui-color-text-muted)', padding: '0 4px' }}>…</span>
+          <span
+            key={`ellipsis-${idx}`}
+            style={{ color: "var(--sl-ui-color-text-muted)", padding: "0 4px" }}
+          >
+            …
+          </span>
         ) : (
           <Button
             key={p}
-            variant={p === page ? 'primary' : 'secondary'}
+            variant={p === page ? "primary" : "secondary"}
             size="lg"
-            aria-current={p === page ? 'page' : undefined}
+            aria-current={p === page ? "page" : undefined}
             onClick={() => onChange(p)}
           >
             {p}
           </Button>
-        )
+        ),
       )}
 
       <Button

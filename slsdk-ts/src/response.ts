@@ -16,7 +16,9 @@ export class SdkResponse {
   /** The raw underlying byte stream; process incrementally for large files/streaming, never load it whole into memory */
   get stream(): ReadableStream<Uint8Array> {
     if (!this.raw.body) {
-      throw new Error('response body has no readable stream (e.g. a 204/HEAD response, or the stream was already consumed)');
+      throw new Error(
+        "response body has no readable stream (e.g. a 204/HEAD response, or the stream was already consumed)",
+      );
     }
     return this.raw.body;
   }

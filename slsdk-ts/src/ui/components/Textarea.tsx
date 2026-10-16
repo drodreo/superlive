@@ -35,7 +35,7 @@ export function Textarea({
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
-        className={`sl-ui-input-field sl-ui-textarea-field${error ? ' sl-ui-input-field--error' : ''}${className ? ' ' + className : ''}`}
+        className={`sl-ui-input-field sl-ui-textarea-field${error ? " sl-ui-input-field--error" : ""}${className ? " " + className : ""}`}
       />
     </div>
   );

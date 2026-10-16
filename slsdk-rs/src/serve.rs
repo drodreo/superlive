@@ -12,15 +12,15 @@
 //! token means 401, always; UDS and Origin checks are merely optional attack surface
 //! reduction, never a security dependency.
 
-use crate::config::{config_router, ConfigIntegration, ConfigStore};
-use crate::endpoint::{Endpoint, EndpointParseError, ENV_ENDPOINT, ENV_TOKEN};
+use crate::config::{ConfigIntegration, ConfigStore, config_router};
+use crate::endpoint::{ENV_ENDPOINT, ENV_TOKEN, Endpoint, EndpointParseError};
 use crate::manifest::ComponentManifest;
+use axum::Router;
 use axum::extract::{Request, State};
-use axum::http::{header::AUTHORIZATION, HeaderValue, StatusCode};
+use axum::http::{HeaderValue, StatusCode, header::AUTHORIZATION};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
-use axum::Router;
 use serde_json::json;
 use std::fmt;
 use std::sync::Arc;
@@ -172,7 +172,9 @@ pub async fn serve_with_config(
             .parse()
             .map_err(|source| ServeError::InvalidEndpoint { value, source })?,
         Err(_) => {
-            log::warn!("{ENV_ENDPOINT} not set: standalone debug mode (default tcp:127.0.0.1:0, not managed by the shell)");
+            log::warn!(
+                "{ENV_ENDPOINT} not set: standalone debug mode (default tcp:127.0.0.1:0, not managed by the shell)"
+            );
             Endpoint::Tcp {
                 addr: "127.0.0.1:0"
                     .parse()
@@ -253,7 +255,7 @@ pub async fn serve_with_config(
                     return Err(ServeError::Listen {
                         endpoint: endpoint.clone(),
                         source,
-                    })
+                    });
                 }
             }
             let listener =

@@ -8,7 +8,7 @@
  * (200ms × 10 = 2s) and resume rendering automatically once ready; only a timeout returns 'missing', the waiting period returns
  * 'waiting' (components should render null to avoid flashing a fallback page).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 /** Shell-injected environment (aligned with the shell App.tsx injection shape) */
 export interface ShellEnv {
@@ -23,24 +23,24 @@ declare global {
 }
 
 /** Shell environment readiness: ready = usable; waiting = shell injection not finished yet (async); missing = wait timed out */
-export type ShellState = 'ready' | 'waiting' | 'missing';
+export type ShellState = "ready" | "waiting" | "missing";
 
 export function useShellState(): ShellState {
   const [shell, setShell] = useState<ShellState>(() =>
-    window.__SL_SHELL__ ? 'ready' : 'waiting',
+    window.__SL_SHELL__ ? "ready" : "waiting",
   );
 
   useEffect(() => {
-    if (shell !== 'waiting') return;
+    if (shell !== "waiting") return;
     let tries = 0;
     const timer = window.setInterval(() => {
       tries += 1;
       if (window.__SL_SHELL__) {
         window.clearInterval(timer);
-        setShell('ready');
+        setShell("ready");
       } else if (tries >= 10) {
         window.clearInterval(timer);
-        setShell('missing');
+        setShell("missing");
       }
     }, 200);
     return () => window.clearInterval(timer);

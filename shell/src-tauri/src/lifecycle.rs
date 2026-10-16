@@ -11,7 +11,7 @@
 
 use crate::config::{DataLayout, HEALTH_INTERVAL, STOP_GRACE};
 use crate::registry::{Registry, RunningComponent};
-use slsdk_rs::{ComponentManifest, Endpoint, ENV_ENDPOINT, ENV_TOKEN};
+use slsdk_rs::{ComponentManifest, ENV_ENDPOINT, ENV_TOKEN, Endpoint};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -40,7 +40,10 @@ impl std::fmt::Display for LifecycleError {
                 write!(f, "failed to spawn the component process: {source}")
             }
             LifecycleError::HealthTimeout { id } => {
-                write!(f, "component {id} health probe timed out; it did not become ready within the deadline")
+                write!(
+                    f,
+                    "component {id} health probe timed out; it did not become ready within the deadline"
+                )
             }
             LifecycleError::Io { source } => write!(f, "component management IO failure: {source}"),
             LifecycleError::NamespaceTaken { namespace } => {
@@ -460,7 +463,9 @@ async fn supervise(
         }
         Ok(_) => crate::config_plane::ComponentState::Stopped,
         Err(e) => {
-            log::warn!("failed to determine the post-exit state of component {namespace} ({e}); conservatively marking needs-config");
+            log::warn!(
+                "failed to determine the post-exit state of component {namespace} ({e}); conservatively marking needs-config"
+            );
             crate::config_plane::ComponentState::NeedsConfig
         }
     };

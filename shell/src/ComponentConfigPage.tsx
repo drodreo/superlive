@@ -14,9 +14,9 @@
 // field by field in red (the only exception: NaN for number, a mechanical
 // type-conversion check the frontend flags directly).
 
-import { useCallback, useEffect, useState } from 'react';
-import { firstValueFrom } from 'rxjs';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useState } from "react";
+import { firstValueFrom } from "rxjs";
+import { useTranslation } from "react-i18next";
 import {
   fetchConfigI18n,
   getComponentConfig,
@@ -26,10 +26,10 @@ import {
   type ComponentConfig,
   type ComponentState,
   type ConfigField,
-} from './api';
-import { navigate } from './router';
-import { LaunchOptionsDialog } from './LaunchOptionsDialog';
-import type { ShellKey } from './i18n';
+} from "./api";
+import { navigate } from "./router";
+import { LaunchOptionsDialog } from "./LaunchOptionsDialog";
+import type { ShellKey } from "./i18n";
 
 type FormValues = Record<string, string>;
 
@@ -38,10 +38,11 @@ type I18nMessage = { key: ShellKey; params?: Record<string, string | number> };
 
 /** Parses the Err content of a failed write_component_config: the contract form is a JSON string {"errors":{key: reason}}. */
 function parseWriteErrors(e: unknown): Record<string, string> | null {
-  if (typeof e !== 'string') return null;
+  if (typeof e !== "string") return null;
   try {
     const parsed = JSON.parse(e) as { errors?: Record<string, string> };
-    if (parsed.errors && typeof parsed.errors === 'object') return parsed.errors;
+    if (parsed.errors && typeof parsed.errors === "object")
+      return parsed.errors;
   } catch {
     // A non-JSON error string → falls to the generic error message
   }
@@ -59,7 +60,9 @@ export function ComponentConfigPage({ id }: { id: string }) {
   const [globalError, setGlobalError] = useState<I18nMessage | null>(null);
   const [busy, setBusy] = useState(false);
   // Set of visible sensitive fields (password form + show/hide toggle)
-  const [sensitiveVisible, setSensitiveVisible] = useState<Set<string>>(new Set());
+  const [sensitiveVisible, setSensitiveVisible] = useState<Set<string>>(
+    new Set(),
+  );
   // Save-result message bar (wording routed by the component's lifecycle
   // state, see save())
   const [saveInfo, setSaveInfo] = useState<I18nMessage | null>(null);
@@ -80,9 +83,9 @@ export function ComponentConfigPage({ id }: { id: string }) {
           init[f.key] =
             v !== undefined
               ? String(v)
-              : f.type === 'boolean'
+              : f.type === "boolean"
                 ? String(f.default ?? false)
-                : '';
+                : "";
         }
         setForm(init);
         // i18n resources come from the component's ui static space (not
@@ -91,7 +94,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
         void fetchConfigI18n(id, cfg.i18n).then(setI18nMap);
       },
       error: (e) =>
-        setGlobalError({ key: 'cfg.loadFailed', params: { error: String(e) } }),
+        setGlobalError({ key: "cfg.loadFailed", params: { error: String(e) } }),
     });
     return () => sub.unsubscribe();
   }, [id]);
@@ -99,7 +102,8 @@ export function ComponentConfigPage({ id }: { id: string }) {
   /** i18n lookup: label/group values are themselves i18n keys — translated on hit, falling back to the raw text when missing. */
   const tr = useCallback((text: string) => i18nMap?.[text] ?? text, [i18nMap]);
 
-  const setValue = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const setValue = (key: string, value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   const toggleVisible = (key: string) =>
     setSensitiveVisible((s) => {
@@ -131,9 +135,9 @@ export function ComponentConfigPage({ id }: { id: string }) {
       // authority lives on the shell Rust side; not duplicated here)
       const localErrors: Record<string, string> = {};
       for (const f of config.fields) {
-        const raw = form[f.key] ?? '';
-        if (f.type === 'number' && raw !== '' && Number.isNaN(Number(raw))) {
-          localErrors[f.key] = t('cfg.nan');
+        const raw = form[f.key] ?? "";
+        if (f.type === "number" && raw !== "" && Number.isNaN(Number(raw))) {
+          localErrors[f.key] = t("cfg.nan");
         }
       }
       if (Object.keys(localErrors).length > 0) {
@@ -143,16 +147,16 @@ export function ComponentConfigPage({ id }: { id: string }) {
 
       const payload: Record<string, string | number | boolean> = {};
       for (const f of config.fields) {
-        const raw = form[f.key] ?? '';
-        if (f.type === 'boolean') {
-          payload[f.key] = raw === 'true';
-        } else if (raw !== '') {
-          payload[f.key] = f.type === 'number' ? Number(raw) : raw;
+        const raw = form[f.key] ?? "";
+        if (f.type === "boolean") {
+          payload[f.key] = raw === "true";
+        } else if (raw !== "") {
+          payload[f.key] = f.type === "number" ? Number(raw) : raw;
         } else if (!f.required && config.values[f.key] !== undefined) {
           // Non-required with an existing value: explicitly submitting an empty
           // string = clear semantics (the endpoint writes back an empty string,
           // read back as empty)
-          payload[f.key] = '';
+          payload[f.key] = "";
         }
         // Other empty strings do not submit the key: required unfilled (the
         // missing signal is left for shell-side validation to block) /
@@ -166,7 +170,7 @@ export function ComponentConfigPage({ id }: { id: string }) {
         // within the restart window, so instead of distinguishing running via
         // get_component_state, the message speaks in restart semantics
         // directly.
-        setSaveInfo({ key: 'cfg.savedRestart' });
+        setSaveInfo({ key: "cfg.savedRestart" });
         return;
       }
       // No automatic restart triggered → route by the component's lifecycle
@@ -178,17 +182,17 @@ export function ComponentConfigPage({ id }: { id: string }) {
         // A state-read failure does not affect the save's success: a neutral
         // message, not entering the gate flow (avoiding disturbing a
         // stopped-state user)
-        setSaveInfo({ key: 'cfg.saved' });
+        setSaveInfo({ key: "cfg.saved" });
         return;
       }
-      if (state === 'running') {
+      if (state === "running") {
         // Management entry: no restart_required entries changed → the
         // component's standard endpoint hot-reloads immediately
-        setSaveInfo({ key: 'cfg.savedHot' });
-      } else if (state === 'stopped') {
+        setSaveInfo({ key: "cfg.savedHot" });
+      } else if (state === "stopped") {
         // Management entry: no automatic start; the user starts manually from
         // the management page
-        setSaveInfo({ key: 'cfg.savedStopped' });
+        setSaveInfo({ key: "cfg.savedStopped" });
       } else {
         // needs-config / ready (the gate flow) → the launch options prompt (an
         // extensible slot, see LaunchOptionsDialog); timing differences in the
@@ -199,7 +203,8 @@ export function ComponentConfigPage({ id }: { id: string }) {
     } catch (e) {
       const fieldErrors = parseWriteErrors(e);
       if (fieldErrors) setErrors(fieldErrors);
-      else setGlobalError({ key: 'cfg.saveFailed', params: { error: String(e) } });
+      else
+        setGlobalError({ key: "cfg.saveFailed", params: { error: String(e) } });
     } finally {
       setBusy(false);
     }
@@ -211,59 +216,65 @@ export function ComponentConfigPage({ id }: { id: string }) {
     try {
       await firstValueFrom(startComponent(id));
       setShowLaunchOptions(false);
-      navigate('/components');
+      navigate("/components");
     } catch (e) {
       setShowLaunchOptions(false);
-      setGlobalError({ key: 'mgr.startFailed', params: { error: String(e) } });
+      setGlobalError({ key: "mgr.startFailed", params: { error: String(e) } });
     }
   };
 
   const renderField = (f: ConfigField) => {
-    const raw = form[f.key] ?? '';
+    const raw = form[f.key] ?? "";
     const err = errors[f.key];
     const visible = sensitiveVisible.has(f.key);
     // Masking first: sensitive and not toggled open always renders as a
     // password field (including sensitive number/datetime entries)
     const inputType =
       f.sensitive && !visible
-        ? 'password'
-        : f.type === 'number'
-          ? 'number'
-          : f.type === 'datetime'
-            ? 'datetime-local'
-            : 'text';
+        ? "password"
+        : f.type === "number"
+          ? "number"
+          : f.type === "datetime"
+            ? "datetime-local"
+            : "text";
     // Reserved description channel: the i18n key = {key}.description (the
     // manifest declaration has no standalone description field)
     const desc = i18nMap?.[`${f.key}.description`];
     return (
-      <div className={`config-field${err ? ' has-error' : ''}`} key={f.key}>
+      <div className={`config-field${err ? " has-error" : ""}`} key={f.key}>
         <label htmlFor={`cfg-${f.key}`}>
           {f.required && (
-            <span className="req" title={t('cfg.required')}>
+            <span className="req" title={t("cfg.required")}>
               *
             </span>
           )}
           {tr(f.label)}
-          {f.restart_required && <span className="restart-tag">{t('cfg.restartTag')}</span>}
+          {f.restart_required && (
+            <span className="restart-tag">{t("cfg.restartTag")}</span>
+          )}
         </label>
-        {f.type === 'select' ? (
-          <select id={`cfg-${f.key}`} value={raw} onChange={(e) => setValue(f.key, e.target.value)}>
-            <option value="">{t('cfg.unset')}</option>
+        {f.type === "select" ? (
+          <select
+            id={`cfg-${f.key}`}
+            value={raw}
+            onChange={(e) => setValue(f.key, e.target.value)}
+          >
+            <option value="">{t("cfg.unset")}</option>
             {(f.options ?? []).map((o) => (
               <option key={o} value={o}>
                 {o}
               </option>
             ))}
           </select>
-        ) : f.type === 'boolean' ? (
+        ) : f.type === "boolean" ? (
           <label className="checkbox-line">
             <input
               id={`cfg-${f.key}`}
               type="checkbox"
-              checked={raw === 'true'}
+              checked={raw === "true"}
               onChange={(e) => setValue(f.key, String(e.target.checked))}
             />
-            {t('cfg.enabled')}
+            {t("cfg.enabled")}
           </label>
         ) : (
           <div className="sensitive-wrap">
@@ -273,14 +284,18 @@ export function ComponentConfigPage({ id }: { id: string }) {
               value={raw}
               placeholder={
                 f.default !== undefined && f.default !== null
-                  ? t('cfg.default', { value: String(f.default) })
-                  : t('cfg.notSet')
+                  ? t("cfg.default", { value: String(f.default) })
+                  : t("cfg.notSet")
               }
               onChange={(e) => setValue(f.key, e.target.value)}
             />
             {f.sensitive && (
-              <button type="button" className="link" onClick={() => toggleVisible(f.key)}>
-                {visible ? t('cfg.hide') : t('cfg.show')}
+              <button
+                type="button"
+                className="link"
+                onClick={() => toggleVisible(f.key)}
+              >
+                {visible ? t("cfg.hide") : t("cfg.show")}
               </button>
             )}
           </div>
@@ -294,14 +309,16 @@ export function ComponentConfigPage({ id }: { id: string }) {
   if (globalError && !config) {
     return (
       <section className="config-page">
-        <div className="comp-error">{t(globalError.key, globalError.params)}</div>
+        <div className="comp-error">
+          {t(globalError.key, globalError.params)}
+        </div>
       </section>
     );
   }
   if (!config) {
     return (
       <section className="config-page">
-        <div className="comp-loading">{t('cfg.loading')}</div>
+        <div className="comp-loading">{t("cfg.loading")}</div>
       </section>
     );
   }
@@ -309,20 +326,32 @@ export function ComponentConfigPage({ id }: { id: string }) {
   return (
     <section className="config-page">
       <div className="page-head">
-        <button type="button" className="link" onClick={() => navigate('/components')}>
-          {t('cfg.back')}
+        <button
+          type="button"
+          className="link"
+          onClick={() => navigate("/components")}
+        >
+          {t("cfg.back")}
         </button>
-        <h2>{t('cfg.title', { id })}</h2>
+        <h2>{t("cfg.title", { id })}</h2>
       </div>
 
       {globalError && (
-        <div className="message error">{t(globalError.key, globalError.params)}</div>
+        <div className="message error">
+          {t(globalError.key, globalError.params)}
+        </div>
       )}
-      {saveInfo && <div className="message success">{t(saveInfo.key, saveInfo.params)}</div>}
-      {config.fields.length === 0 && <div className="message">{t('cfg.noFields')}</div>}
+      {saveInfo && (
+        <div className="message success">
+          {t(saveInfo.key, saveInfo.params)}
+        </div>
+      )}
+      {config.fields.length === 0 && (
+        <div className="message">{t("cfg.noFields")}</div>
+      )}
 
       {grouped.map((g) => (
-        <section className="config-group" key={g.name ?? '__ungrouped__'}>
+        <section className="config-group" key={g.name ?? "__ungrouped__"}>
           {g.name !== null && <h3>{tr(g.name)}</h3>}
           {g.fields.map(renderField)}
         </section>
@@ -330,8 +359,13 @@ export function ComponentConfigPage({ id }: { id: string }) {
 
       {config.fields.length > 0 && (
         <div className="config-actions">
-          <button type="button" className="primary" disabled={busy} onClick={() => void save()}>
-            {t('cfg.save')}
+          <button
+            type="button"
+            className="primary"
+            disabled={busy}
+            onClick={() => void save()}
+          >
+            {t("cfg.save")}
           </button>
         </div>
       )}

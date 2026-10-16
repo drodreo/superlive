@@ -63,6 +63,15 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      # Smoke gate before anything is uploaded or attached: the frontend must
+      # boot in a real browser (mount + no module-chain errors). A broken
+      # release build must not reach the release page.
+      - name: Smoke (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd shell
+          pnpm run smoke
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

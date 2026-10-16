@@ -15,42 +15,46 @@
  * Run from shell/ after a react/react-dom version bump:
  *   node scripts/gen-vendor-shims.mjs
  */
-import { createRequire } from 'node:module';
-import { writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from "node:module";
+import { writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(import.meta.url);
 
 const SPECS = [
-  { file: 'react.ts', pkg: 'react', note: 'the react whitelist entry' },
-  { file: 'react-dom.ts', pkg: 'react-dom', note: 'the react-dom whitelist entry' },
+  { file: "react.ts", pkg: "react", note: "the react whitelist entry" },
   {
-    file: 'react-dom-client.ts',
-    pkg: 'react-dom/client',
-    note: 'the react-dom/client subpath (createRoot mounting)',
+    file: "react-dom.ts",
+    pkg: "react-dom",
+    note: "the react-dom whitelist entry",
   },
   {
-    file: 'react-jsx-runtime.ts',
-    pkg: 'react/jsx-runtime',
-    note: 'the react/jsx-runtime subpath (production jsx transform runtime)',
+    file: "react-dom-client.ts",
+    pkg: "react-dom/client",
+    note: "the react-dom/client subpath (createRoot mounting)",
   },
   {
-    file: 'react-jsx-dev-runtime.ts',
-    pkg: 'react/jsx-dev-runtime',
-    note: 'the react/jsx-dev-runtime subpath (dev jsx transform runtime)',
+    file: "react-jsx-runtime.ts",
+    pkg: "react/jsx-runtime",
+    note: "the react/jsx-runtime subpath (production jsx transform runtime)",
+  },
+  {
+    file: "react-jsx-dev-runtime.ts",
+    pkg: "react/jsx-dev-runtime",
+    note: "the react/jsx-dev-runtime subpath (dev jsx transform runtime)",
   },
 ];
 
 for (const spec of SPECS) {
   const vendor = require(spec.pkg);
   const names = Object.keys(vendor).filter(
-    (k) => k !== 'default' && /^[A-Za-z_$][\w$]*$/.test(k),
+    (k) => k !== "default" && /^[A-Za-z_$][\w$]*$/.test(k),
   );
   const body = names
-    .map((n, i) => `  ${n} = vendor.${n}${i < names.length - 1 ? ',' : ';'}`)
-    .join('\n');
+    .map((n, i) => `  ${n} = vendor.${n}${i < names.length - 1 ? "," : ";"}`)
+    .join("\n");
   const content = `// Vendor shim (GENERATED — do not hand-edit; regenerate with
 // \`node scripts/gen-vendor-shims.mjs\` after a react/react-dom bump):
 // ${spec.note}.
@@ -69,6 +73,6 @@ export default vendorImport;
 export const
 ${body}
 `;
-  await writeFile(resolve(root, 'src/vendor', spec.file), content);
+  await writeFile(resolve(root, "src/vendor", spec.file), content);
   console.log(`${spec.file}: ${names.length} named exports`);
 }

@@ -1,4 +1,4 @@
-import { Observable } from 'rxjs';
+import { Observable } from "rxjs";
 
 export interface RetryOptions {
   /** Initial reconnect delay, defaults to 500ms */
@@ -21,12 +21,15 @@ export interface ObserveOptions {
  * the send direction does not go through the ws (use post instead).
  */
 export function createObserve(baseUrl: string, token: string) {
-  return function observe<T>(path: string, opts?: ObserveOptions): Observable<T> {
-    if (!path.startsWith('/')) {
+  return function observe<T>(
+    path: string,
+    opts?: ObserveOptions,
+  ): Observable<T> {
+    if (!path.startsWith("/")) {
       throw new TypeError(`path must start with /, got: ${path}`);
     }
     // ws cannot carry custom headers, so the token travels via the ?token= query — a trade-off already settled in the architecture doc
-    const wsUrl = `${baseUrl.replace(/^http/, 'ws')}${path}?token=${encodeURIComponent(token)}`;
+    const wsUrl = `${baseUrl.replace(/^http/, "ws")}${path}?token=${encodeURIComponent(token)}`;
     const wsFactory = opts?.wsFactory ?? ((url: string) => new WebSocket(url));
     const retry = {
       initialDelayMs: 500,
@@ -71,7 +74,10 @@ export function createObserve(baseUrl: string, token: string) {
           if (closedByUser) {
             return;
           }
-          const delay = Math.min(retry.initialDelayMs * retry.factor ** attempt, retry.maxDelayMs);
+          const delay = Math.min(
+            retry.initialDelayMs * retry.factor ** attempt,
+            retry.maxDelayMs,
+          );
           attempt += 1;
           reconnectTimer = setTimeout(connect, delay);
         };
