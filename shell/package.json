@@ -1,8 +1,13 @@
 {
   "name": "superlive-shell",
-  "private": true,
   "version": "0.2.2",
+  "private": true,
   "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && vite build",
