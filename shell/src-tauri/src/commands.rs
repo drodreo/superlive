@@ -1029,11 +1029,11 @@ mod tests {
         // Project landed on disk + the registration view
         assert!(target.join("server/Cargo.toml").is_file());
         assert!(target.join("web/src/main.tsx").is_file());
-        // slscaffold canonicalizes the target (absolutize): on Windows that is
-        // the verbatim long-path form (`\\?\C:\...`) while the tempdir path may
-        // carry the 8.3 short name — compare against the same-source
-        // canonical form, not the raw tempdir string.
-        let target_canonical = target.canonicalize().unwrap();
+        // slscaffold canonicalizes the target (absolutize) and strips the
+        // Windows verbatim prefix; canonicalize() here yields the verbatim
+        // long-path form while the tempdir path may carry the 8.3 short name —
+        // strip to the same plain form on both sides before comparing.
+        let target_canonical = slsdk_rs::strip_verbatim_prefix(&target.canonicalize().unwrap());
         assert_eq!(result.project_dir, target_canonical.to_string_lossy());
         assert!(!result.next_steps.is_empty());
         let view = &result.component;

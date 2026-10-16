@@ -621,7 +621,7 @@ fn collect_relative_files(
 /// go through Win32 normalization again; other platforms return the path
 /// unchanged.
 #[cfg(windows)]
-fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+pub fn strip_verbatim_prefix(path: &Path) -> PathBuf {
     let text = path.as_os_str().to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         PathBuf::from(format!(r"\\{rest}"))
@@ -633,7 +633,7 @@ fn strip_verbatim_prefix(path: &Path) -> PathBuf {
 }
 
 #[cfg(not(windows))]
-fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+pub fn strip_verbatim_prefix(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
