@@ -512,6 +512,7 @@ fn request_shutdown(pid: Option<u32>, shutdown_stdin: Option<ChildStdin>, namesp
     #[cfg(windows)]
     {
         let _ = pid;
+        let _ = namespace;
         if let Some(mut stdin) = shutdown_stdin {
             tokio::spawn(async move {
                 use tokio::io::AsyncWriteExt;

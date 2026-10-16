@@ -3,6 +3,11 @@
   "version": "0.2.0",
   "license": "MIT",
   "type": "module",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
