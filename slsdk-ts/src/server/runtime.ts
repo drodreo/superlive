@@ -17,8 +17,14 @@ declare global {
           finished: Promise<void>;
           shutdown(): void;
         };
-        addSignalListener(signal: "SIGTERM" | "SIGINT", handler: () => void): void;
-        removeSignalListener(signal: "SIGTERM" | "SIGINT", handler: () => void): void;
+        addSignalListener(
+          signal: "SIGTERM" | "SIGINT",
+          handler: () => void,
+        ): void;
+        removeSignalListener(
+          signal: "SIGTERM" | "SIGINT",
+          handler: () => void,
+        ): void;
       }
     | undefined;
 
