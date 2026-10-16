@@ -529,8 +529,13 @@ fn next_steps(req: &ScaffoldRequest, root: &Path) -> Vec<String> {
             )
         }
         BackendTemplate::Deno => {
+            // Deno cannot resolve file: dependencies on its own: the
+            // node_modules directory must be pre-installed by a Node-ecosystem
+            // manager (bun natively supports file:, recommended), and the run
+            // needs --node-modules-dir=manual to consume it. The pre-install
+            // line goes into steps right after the backend line below.
             format!(
-                "backend : SL_ENDPOINT=tcp:127.0.0.1:{port} deno run --allow-net --allow-read --allow-env {root}/server/server.ts"
+                "backend : SL_ENDPOINT=tcp:127.0.0.1:{port} deno run --node-modules-dir=manual --allow-net --allow-read --allow-env {root}/server/server.ts"
             )
         }
         BackendTemplate::Bun => {
@@ -539,6 +544,18 @@ fn next_steps(req: &ScaffoldRequest, root: &Path) -> Vec<String> {
     };
     let frontend =
         format!("frontend: cd {root}/web && pnpm install && pnpm dev   → http://localhost:5173");
+    // Deno's file: dependencies need a pre-installed node_modules (bun/npm) —
+    // the one-time setup line precedes the backend dev line whenever the
+    // server plane exists.
+    let has_server = matches!(
+        req.shape,
+        ComponentShape::FrontendAndBackend | ComponentShape::BackendOnly
+    );
+    if has_server && req.template == BackendTemplate::Deno {
+        steps.push(format!(
+            "backend : (first time) cd {root}/server && bun install  # or npm install — deno needs a pre-installed node_modules for file: deps"
+        ));
+    }
     match req.shape {
         ComponentShape::FrontendAndBackend => {
             steps.push(backend);
@@ -931,8 +948,14 @@ mod build_script_tests {
         for (name, tpl) in dialects {
             let deno = render_dialect(tpl, ComponentShape::BackendOnly, BackendTemplate::Deno);
             assert!(
-                deno.contains("deno compile --output"),
-                "{name} deno backend lost the deno compile command"
+                deno.contains("deno compile --node-modules-dir=manual"),
+                "{name} deno backend lost the manual node_modules flag on compile"
+            );
+            // The allow flags are baked into the compiled binary: the shell
+            // spawns it as a plain executable with no deno flags.
+            assert!(
+                deno.contains("--allow-net --allow-read --allow-env --output"),
+                "{name} deno backend lost the baked-in permission flags"
             );
             assert!(
                 deno.contains("server/server.ts"),
@@ -941,6 +964,12 @@ mod build_script_tests {
             assert!(
                 deno.contains("bin/demo-comp-server"),
                 "{name} deno backend lost the binary assertion"
+            );
+            // The node_modules pre-install (bun preferred, npm fallback) must
+            // gate the compile: deno cannot resolve file: deps alone.
+            assert!(
+                deno.contains("bun install") && deno.contains("npm install"),
+                "{name} deno backend lost the node_modules pre-install steps"
             );
             assert!(
                 !deno.contains("cargo build --release"),

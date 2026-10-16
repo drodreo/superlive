@@ -186,6 +186,17 @@ fn ts_server_entry_carries_identity_and_sdk_contract() {
         // project type error the tree checks never saw).
         assert!(server.contains(r#"min_shell_version: "0.0.0""#));
         assert!(server.contains(r#"display_name: "Demo Comp""#));
+        // Call order is the contract: handler first, manifest second (the
+        // slsdk-ts signature mirrors slsdk-rs's serve(app, manifest)) — the
+        // flipped order once passed the tree checks and broke only at runtime.
+        assert!(
+            server.contains("serve(routes, manifest);"),
+            "the serve call must pass the handler first"
+        );
+        assert!(
+            !server.contains("serve(manifest"),
+            "flipped serve argument order"
+        );
         assert!(server.contains("/api/v1/hello"));
         // Zero placeholder residue.
         for token in PLACEHOLDERS {
@@ -211,7 +222,14 @@ fn readme_documents_the_runtime_per_template() {
     // README must tell the author why.
     assert!(readme.contains("tcp-only"));
     assert!(readme.contains("- Deno (https://deno.com)"));
-    assert!(readme.contains("deno run --allow-net --allow-read --allow-env server/server.ts"));
+    assert!(
+        readme.contains("deno run --node-modules-dir=manual --allow-net --allow-read --allow-env server/server.ts"),
+        "the deno run recipe must carry the manual node_modules flag"
+    );
+    assert!(
+        readme.contains("bun install"),
+        "the deno recipe must name the node_modules pre-install step"
+    );
     assert!(!readme.contains("Rust toolchain"));
 
     let dir = TempDir::new().unwrap();
@@ -324,7 +342,7 @@ fn next_steps_follow_the_backend_template() {
         (BackendTemplate::Cargo, "cargo run --manifest-path"),
         (
             BackendTemplate::Deno,
-            "deno run --allow-net --allow-read --allow-env",
+            "deno run --node-modules-dir=manual --allow-net --allow-read --allow-env",
         ),
         (BackendTemplate::Bun, "bun run"),
     ];
@@ -334,12 +352,26 @@ fn next_steps_follow_the_backend_template() {
         let backend_step = result
             .next_steps
             .iter()
-            .find(|step| step.starts_with("backend :"))
+            .find(|step| step.starts_with("backend :") && step.contains("SL_ENDPOINT"))
             .expect("backend-only next_steps carry the backend line");
         assert!(
             backend_step.contains(needle),
             "{template:?} next_steps: {backend_step}"
         );
+        if template == BackendTemplate::Deno {
+            // The pre-install line precedes the dev line: deno cannot resolve
+            // file: deps without a pre-built node_modules (bun/npm).
+            let dev_index = result
+                .next_steps
+                .iter()
+                .position(|step| step.contains("SL_ENDPOINT"))
+                .expect("the backend dev line exists");
+            assert!(
+                dev_index > 0 && result.next_steps[dev_index - 1].contains("bun install"),
+                "the deno pre-install line must precede the dev line: {:?}",
+                result.next_steps
+            );
+        }
     }
 }
 

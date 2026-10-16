@@ -56,9 +56,30 @@ if ($HasServerDir) {
 #@if HAS_SERVER && BACKEND_DENO
 if ($HasServerDir) {
     if (-not (Test-Command 'deno')) { Die 'missing required command: deno - install it from https://deno.com first' }
-    Log 'building server: deno compile --output bin/__ID__-server server/server.ts'
+    # Deno cannot resolve file: dependencies by itself: pre-install node_modules
+    # with bun (native file: support, recommended) or npm, then compile with
+    # --node-modules-dir=manual. The --allow flags are baked into the compiled
+    # binary (the shell spawns it as a plain executable, with no deno flags).
+    if (-not (Test-Path (Join-Path $Root 'server/node_modules'))) {
+        if (Test-Command 'bun') {
+            Log 'installing server deps: bun install (deno needs a pre-installed node_modules)'
+            Push-Location (Join-Path $Root 'server')
+            try { bun install }
+            finally { Pop-Location }
+            if ($LASTEXITCODE -ne 0) { Die 'server dependency pre-install failed (bun)' }
+        } elseif (Test-Command 'npm') {
+            Log 'installing server deps: npm install (deno needs a pre-installed node_modules)'
+            Push-Location (Join-Path $Root 'server')
+            try { npm install }
+            finally { Pop-Location }
+            if ($LASTEXITCODE -ne 0) { Die 'server dependency pre-install failed (npm)' }
+        } else {
+            Die 'missing required command: bun (or npm) - needed to pre-install server/node_modules for deno'
+        }
+    }
+    Log 'building server: deno compile --node-modules-dir=manual --allow-net --allow-read --allow-env --output bin/__ID__-server server/server.ts'
     Push-Location $Root
-    try { deno compile --output 'bin/__ID__-server' 'server/server.ts' }
+    try { deno compile --node-modules-dir=manual --allow-net --allow-read --allow-env --output 'bin/__ID__-server' 'server/server.ts' }
     finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { Die 'server build failed' }
     # deno compile appends .exe on Windows

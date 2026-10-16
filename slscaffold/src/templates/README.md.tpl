@@ -64,9 +64,10 @@ Terminal 1 — backend (fixed port so the dev proxy can reach it):
 
 #@endif
 #@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_DENO
-Terminal 1 — backend (fixed port so the dev proxy can reach it):
+Terminal 1 — backend (first time: `cd server && bun install` — deno needs a
+pre-installed node_modules for file: dependencies; npm works too):
 
-    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ deno run --allow-net --allow-read --allow-env server/server.ts
+    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ deno run --node-modules-dir=manual --allow-net --allow-read --allow-env server/server.ts
 
 #@endif
 #@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_BUN
@@ -106,10 +107,11 @@ Inside the shell, the gateway forwards `/api/__NS__/*` to this backend with the 
 segment stripped; the backend always receives its own full paths (`/api/v1/hello`).
 #@endif
 #@if !IMPORTED && HAS_SERVER && !HAS_WEB && BACKEND_DENO
-Run the backend standalone (fixed port; auth is only enforced when launched by the
-shell):
+Run the backend standalone (first time: `cd server && bun install` — deno needs a
+pre-installed node_modules for file: dependencies; npm works too; fixed port,
+auth is only enforced when launched by the shell):
 
-    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ deno run --allow-net --allow-read --allow-env server/server.ts
+    SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ deno run --node-modules-dir=manual --allow-net --allow-read --allow-env server/server.ts
 
 Inside the shell, the gateway forwards `/api/__NS__/*` to this backend with the namespace
 segment stripped; the backend always receives its own full paths (`/api/v1/hello`).
