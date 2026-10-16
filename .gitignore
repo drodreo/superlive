@@ -11,3 +11,5 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+docs/roadmap.md
