@@ -190,15 +190,17 @@ pub async fn spawn_component(
         .env(ENV_TOKEN, token.as_str())
         .current_dir(&workdir);
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         // Orphan-source fix: the kernel delivers SIGKILL to the component the
         // moment the shell dies (any form — crash, external kill, normal
         // exit), so a dead shell can no longer leak live component processes.
-        // PDEATHSIG is per-thread (it watches the thread that forked): tokio
-        // worker threads live as long as the process, which makes it safe
-        // here — never move this spawn into `spawn_blocking` (disposable
-        // blocking threads would kill healthy components).
+        // prctl/PDEATHSIG is Linux-only (macOS has no equivalent — orphan
+        // reaping there relies on the supervisor's own wait loop); it is also
+        // per-thread (it watches the thread that forked): tokio worker
+        // threads live as long as the process, which makes it safe here —
+        // never move this spawn into `spawn_blocking` (disposable blocking
+        // threads would kill healthy components).
         let shell_pid = nix::unistd::getpid().as_raw();
         unsafe {
             command.pre_exec(move || {
@@ -818,6 +820,7 @@ mod tests {
     /// the management surface cannot stay on "running" after the process is
     /// gone. This is the shell-side half of the bug-③ contract; the UI half
     /// is the component-exited broadcast.
+    #[cfg(unix)]
     #[tokio::test]
     async fn supervise_cleans_up_when_child_is_sigkilled() {
         let (stop_tx, stop_rx) = watch::channel(());
