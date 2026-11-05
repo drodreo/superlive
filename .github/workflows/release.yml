@@ -52,8 +52,11 @@ jobs:
 
       - name: Install frontend deps
         run: |
-          cd shell
-          pnpm install --frozen-lockfile
+          # the shell build compiles the slsdk-ts sources directly (the
+          # dev-mode alias), so slsdk-ts's own deps (react/rxjs) must be
+          # installed before tsc resolves those imports
+          cd slsdk-ts && pnpm install --frozen-lockfile
+          cd ../shell && pnpm install --frozen-lockfile
 
       - name: Build
         run: |
