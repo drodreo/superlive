@@ -1,11 +1,14 @@
 // App self-update dialog: a frontend-driven flow over the Rust updater
 // plugin — check → available (version + notes) → download & install
-// (progress) → restart prompt. v1 keeps manual restart (no plugin-process
-// dependency); on Windows the installer swap takes effect on next launch.
+// (progress) → relaunch straight into the new build. If the relaunch call
+// fails, the dialog falls back to an "installed" prompt for a manual restart;
+// on Windows the installer swap has already placed the new files, so a
+// manual relaunch lands on the new version either way.
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { Modal } from "./Modal";
 
 type Phase =
@@ -56,7 +59,13 @@ export function UpdateDialog({ onClose }: { onClose: () => void }) {
             setReceived(got);
             break;
           case "Finished":
+            // The new build is in place — restart straight into it. If the
+            // relaunch call itself fails, fall back to the manual-restart
+            // prompt (phase "done").
             setPhase("done");
+            relaunch().catch((e) => {
+              setError(String(e));
+            });
             break;
         }
       })
