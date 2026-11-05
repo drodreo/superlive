@@ -20,6 +20,17 @@ export interface DataTableColumn<
   render?: (value: unknown, row: T) => ReactNode;
 }
 
+/**
+ * One row action button definition for the trailing operations column. The
+ * per-row label and handler come from the caller, already resolved against
+ * the row's own scope — protocol semantics (action declarations, context
+ * pointers) stay outside this presentational component.
+ */
+export interface DataTableRowAction {
+  label: (rowIndex: number) => string;
+  onAction: (rowIndex: number) => void;
+}
+
 export interface DataTableProps<
   T extends Record<string, unknown> = Record<string, unknown>,
 > {
@@ -29,6 +40,7 @@ export interface DataTableProps<
   sortDir?: "asc" | "desc";
   onSort?: (key: string) => void;
   emptyMessage?: string;
+  rowActions?: DataTableRowAction[];
 }
 
 function SortIcon({ active, dir }: { active: boolean; dir?: "asc" | "desc" }) {
@@ -47,8 +59,10 @@ export function DataTable<T extends Record<string, unknown>>({
   sortDir,
   onSort,
   emptyMessage,
+  rowActions,
 }: DataTableProps<T>) {
   const finalEmptyMessage = emptyMessage ?? "暂无数据";
+  const columnCount = columns.length + (rowActions ? 1 : 0);
   return (
     <div className="sl-ui-data-table-wrapper">
       <table className="sl-ui-data-table">
@@ -71,6 +85,12 @@ export function DataTable<T extends Record<string, unknown>>({
                 )}
               </th>
             ))}
+            {rowActions && (
+              <th
+                className="sl-ui-data-table-th sl-ui-data-table-th--actions"
+                aria-label="actions"
+              />
+            )}
           </tr>
         </thead>
         <tbody>
@@ -78,7 +98,7 @@ export function DataTable<T extends Record<string, unknown>>({
             <tr>
               <td
                 className="sl-ui-data-table-td"
-                colSpan={columns.length}
+                colSpan={columnCount}
                 style={{
                   textAlign: "center",
                   color: "var(--sl-ui-color-text-muted)",
@@ -102,6 +122,20 @@ export function DataTable<T extends Record<string, unknown>>({
                         : String(row[col.key] ?? "")}
                   </td>
                 ))}
+                {rowActions && (
+                  <td className="sl-ui-data-table-td sl-ui-data-table-td--actions">
+                    {rowActions.map((action, actionIndex) => (
+                      <button
+                        key={actionIndex}
+                        type="button"
+                        className="sl-ui-btn sl-ui-btn--sm sl-ui-data-table-action"
+                        onClick={() => action.onAction(idx)}
+                      >
+                        {action.label(idx)}
+                      </button>
+                    ))}
+                  </td>
+                )}
               </tr>
             ))
           )}

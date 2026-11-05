@@ -3,7 +3,7 @@ import { defineConfig } from "@rslib/core";
 export default defineConfig({
   source: {
     entry: {
-      // api entry: HTTP convenience layer (five verbs + observe + body adaptation + ApiError) + legacy query primitives
+      // api entry: HTTP convenience layer (five verbs + observe + body adaptation + ApiError)
       index: "./src/index.ts",
       // ui entry: shared UI facility (@shell/sdk/ui, see the "@shell/sdk dual entry" section in architecture.md)
       ui: "./src/ui/index.ts",

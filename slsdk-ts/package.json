@@ -1,10 +1,11 @@
 {
   "name": "slsdk-ts",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "pnpm": {
     "onlyBuiltDependencies": [

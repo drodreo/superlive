@@ -15,7 +15,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Observable } from "rxjs";
 import type { BatchResult, SearchResponse } from "../types";
-import type { QueryPagination } from "../../legacy";
+import type { QueryPagination } from "../query-model";
 
 /** Page size for list pages */
 export const DEFAULT_PAGE_SIZE = 20;

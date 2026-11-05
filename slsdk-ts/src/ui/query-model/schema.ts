@@ -1,7 +1,7 @@
 // QuerySchema: describes which fields and operators an entity supports
 //
-// Shared-facility edition (derived from the superlive ui/src/legacy/schema.ts componentization build-out):
-// - placeholder/description removed (i18n protocol fields, hardcoded Chinese in v1, no consumers inside the facility)
+// The schema contract shared across the query component family:
+// - placeholder/description removed (no consumers inside the facility)
 // - `reference.entity` widened to string (architecture.md "ReferenceEntity injection table":
 //   reference-tier data sources are no longer decided by a built-in facility mapping; consumers inject them via
 //   `references?: Record<string, ReferenceSpec>`; the schema only declares reference keys,
@@ -11,8 +11,7 @@
 // - Business conditions fixed for the entity lifetime are injected via QueryListToolbar.fixedExtra,
 //   **never expressed in the schema** (keeps the schema decoupled from business rules)
 //
-// Field keys are wire protocol names (camelCase, matching the core-side ColumnResolver match strings),
-// labels are display copy (hardcoded Chinese).
+// Field keys are wire protocol names (camelCase); labels are display copy (hardcoded Chinese).
 
 import type { QueryOperator } from "./operator";
 

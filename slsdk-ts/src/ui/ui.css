@@ -421,6 +421,20 @@
   border-bottom: none;
 }
 
+/* Row actions column (rowActions): a narrow trailing header plus a button group per row */
+.sl-ui-data-table-th--actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.sl-ui-data-table-td--actions {
+  white-space: nowrap;
+}
+
+.sl-ui-data-table-action + .sl-ui-data-table-action {
+  margin-left: var(--sl-ui-space-1);
+}
+
 .sl-ui-data-table tbody tr:hover .sl-ui-data-table-td {
   background: rgba(16, 185, 129, 0.06);
 }

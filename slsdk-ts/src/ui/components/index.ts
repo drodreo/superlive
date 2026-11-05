@@ -9,6 +9,7 @@ export {
   DataTable,
   type DataTableProps,
   type DataTableColumn,
+  type DataTableRowAction,
 } from "./DataTable";
 export { Pagination, type PaginationProps } from "./Pagination";
 export { SearchBar, type SearchBarProps } from "./SearchBar";
@@ -47,3 +48,4 @@ export {
 } from "./Button";
 export { Select, type SelectProps } from "./Select";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
+export { Text, type TextProps, type TextVariant } from "./Text";

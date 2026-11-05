@@ -1,6 +1,5 @@
-// QueryOperator: the supported operator enum (same names and meanings as the rs side)
-// Serialization: JSON string values use snake_case (e.g. 'eq' / 'contains' / 'is_null'),
-// matching the string literals in core/src/legacy/operator.rs (cross-language protocol alignment, copied verbatim).
+// QueryOperator: the supported operator enum
+// Serialization: JSON string values use snake_case (e.g. 'eq' / 'contains' / 'is_null').
 //
 // All negations go uniformly through the QueryCondition.reversed = true flag (no separate operators defined),
 // keeping the operator set minimal (9 members).

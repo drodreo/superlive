@@ -13,7 +13,11 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { SearchBar } from "../SearchBar";
 import { Select } from "../Select";
 import { QueryDrawer } from "./QueryDrawer";
-import type { QuerySchema, QueryCondition, QuerySorting } from "../../../legacy";
+import type {
+  QuerySchema,
+  QueryCondition,
+  QuerySorting,
+} from "../../query-model";
 import type { ReferenceSpec, SelectOption } from "../../types";
 
 export interface QueryListToolbarFilter {
@@ -25,7 +29,7 @@ export interface QueryListToolbarFilter {
 export interface QueryListToolbarProps {
   /** The query schema (required) */
   querySchema: QuerySchema;
-  /** Callback on filter change (the assembled legacy filter from main search + drawer + fixedExtra + sorting) */
+  /** Callback on filter change (the assembled query filter from main search + drawer + fixedExtra + sorting) */
   onFilterChange: (filter: QueryListToolbarFilter) => void;
   /**
    * Business conditions fixed for the entity lifetime.
@@ -65,7 +69,7 @@ export function QueryListToolbar({
     label: f.label,
   }));
 
-  // Assemble the legacy filter and notify the parent when main search / drawer / sorting change
+  // Assemble the query filter and notify the parent when main search / drawer / sorting change
   // (onFilterChange/fixedExtra are kept in refs as the latest values, avoiding re-run loops from inline reference changes)
   const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onFilterChangeRef = useRef(onFilterChange);

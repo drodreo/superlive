@@ -16,7 +16,7 @@ import type {
   QueryCondition,
   QueryFieldSpec,
   QuerySingleValue,
-} from "../../../legacy";
+} from "../../query-model";
 import type { ReferenceSpec } from "../../types";
 import { TextInput, NumberInput, RangePicker } from "./QueryInputs";
 import { Select } from "../Select";

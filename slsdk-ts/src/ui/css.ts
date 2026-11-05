@@ -1370,6 +1370,55 @@ export const uiCssText = `
   user-select: none;
 }
 
+/* ===== Text (A2UI vocabulary carrier; pure display, zero outer spacing) ===== */
+
+.sl-ui-text {
+  margin: 0;
+  padding: 0;
+  color: var(--sl-ui-color-text-primary);
+}
+
+.sl-ui-text--h1 {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.sl-ui-text--h2 {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.sl-ui-text--h3 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.sl-ui-text--h4 {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.sl-ui-text--h5 {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.sl-ui-text--body {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.sl-ui-text--caption {
+  font-size: 12px;
+  color: var(--sl-ui-color-text-muted);
+  line-height: 1.5;
+}
+
 /* ===== keyframes (the sl-ui- prefix guards against host name collisions) ===== */
 
 @keyframes sl-ui-spin {

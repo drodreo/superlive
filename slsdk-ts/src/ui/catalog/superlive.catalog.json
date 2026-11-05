@@ -1,0 +1,1361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://superlive.dev/a2ui/catalog/v1",
+  "title": "superlive A2UI Catalog",
+  "description": "superlive shared UI facility as an A2UI v0.9.1 catalog. Catalog structure follows the A2UI basic catalog (Apache-2.0, a2ui-project/a2ui); common-type references point at the v0.9 common_types.json.",
+  "catalogId": "superlive",
+  "components": {
+    "Button": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Button"
+            },
+            "child": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentId",
+              "description": "The ID of the child component (typically a Text component carrying the button label)."
+            },
+            "variant": {
+              "type": "string",
+              "description": "Visual variant. Defaults to secondary.",
+              "enum": ["primary", "secondary", "ghost", "danger", "info"],
+              "default": "secondary"
+            },
+            "size": {
+              "type": "string",
+              "description": "Size tier. Defaults to md.",
+              "enum": ["sm", "md", "lg"],
+              "default": "md"
+            },
+            "loading": {
+              "type": "boolean",
+              "description": "Shows a spinner and disables the button.",
+              "default": false
+            },
+            "block": {
+              "type": "boolean",
+              "description": "Stretch the button to 100% width.",
+              "default": false
+            },
+            "action": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the button is activated."
+            }
+          },
+          "required": ["component", "child", "action"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Checkbox": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Checkbox"
+            },
+            "label": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The text displayed next to the checkbox."
+            },
+            "checked": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "The checkbox state; bind to a data model path for two-way binding."
+            },
+            "disabled": {
+              "type": "boolean",
+              "description": "Disables interaction.",
+              "default": false
+            }
+          },
+          "required": ["component", "label", "checked"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ConfirmDialog": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "ConfirmDialog"
+            },
+            "open": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Whether the dialog is visible; bind to a data model path to toggle it."
+            },
+            "title": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Dialog title."
+            },
+            "message": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Confirmation message body."
+            },
+            "confirmText": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Confirm button label."
+            },
+            "cancelText": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Cancel button label."
+            },
+            "danger": {
+              "type": "boolean",
+              "description": "Renders the confirm action as a destructive (danger) style.",
+              "default": false
+            },
+            "warningText": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Optional warning line rendered above the actions."
+            },
+            "loading": {
+              "type": "boolean",
+              "description": "Confirm operation in progress; disables both buttons.",
+              "default": false
+            },
+            "confirmAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the confirm button is activated."
+            },
+            "cancelAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the dialog is cancelled or dismissed."
+            }
+          },
+          "required": ["component", "open", "title", "message", "confirmAction"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "DataTable": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "DataTable"
+            },
+            "columns": {
+              "type": "array",
+              "description": "Column declarations (data-driven; no render callbacks).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "Row field rendered in this column."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Column header text."
+                  },
+                  "sortable": {
+                    "type": "boolean",
+                    "description": "Whether the header click dispatches sortAction.",
+                    "default": false
+                  }
+                },
+                "required": ["key", "label"],
+                "additionalProperties": false
+              }
+            },
+            "rows": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicValue",
+              "description": "The row array; bind to a data model path (e.g. {\"path\": \"/items\"}). Each element is one row, cells read row[column.key]."
+            },
+            "sortKey": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The currently sorted column key; bind to a data model path."
+            },
+            "sortDir": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Sort direction: asc or desc; bind to a data model path."
+            },
+            "sortAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when a sortable header is activated; the clicked column key is returned in the event context as \"key\"."
+            },
+            "emptyMessage": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Shown when the row array is empty."
+            },
+            "rowActions": {
+              "type": "array",
+              "description": "Row action buttons rendered as a trailing operations column. Each activation dispatches its action with the row element as the evaluation scope: relative {\"path\"} pointers in the event context resolve against the row object (e.g. \"id\" reads the row's id field); absolute paths stay root-relative.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+                    "description": "Button label (resolved against the row scope)."
+                  },
+                  "action": {
+                    "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+                    "description": "Dispatched on activation; context pointers resolve against the row."
+                  }
+                },
+                "required": ["label", "action"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["component", "columns", "rows"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "EmptyState": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "EmptyState"
+            },
+            "icon": {
+              "type": "string",
+              "description": "Preset illustration. Defaults to search.",
+              "enum": ["search", "data", "file"],
+              "default": "search"
+            },
+            "title": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Primary empty-state headline."
+            },
+            "description": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Secondary explanatory line."
+            },
+            "child": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentId",
+              "description": "Optional action child (typically a Button component)."
+            }
+          },
+          "required": ["component", "title"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ErrorMessage": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "ErrorMessage"
+            },
+            "error": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The error text to display."
+            },
+            "title": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Optional heading rendered above the error text."
+            },
+            "retryAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the retry button is activated."
+            }
+          },
+          "required": ["component", "error"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "FormDialog": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "FormDialog"
+            },
+            "open": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Whether the dialog is visible; bind to a data model path to toggle it."
+            },
+            "title": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Dialog title."
+            },
+            "children": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ChildList",
+              "description": "Form body as a component subtree (alternative to formSchema)."
+            },
+            "formSchema": {
+              "$ref": "#/$defs/FormSchema",
+              "description": "Form body declared as data (alternative to children)."
+            },
+            "submitText": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Submit button label."
+            },
+            "cancelText": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Cancel button label."
+            },
+            "loading": {
+              "type": "boolean",
+              "description": "Submit operation in progress; disables both buttons.",
+              "default": false
+            },
+            "submitDisabled": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Disables the submit button while true."
+            },
+            "submitAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the submit button is activated."
+            },
+            "cancelAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the dialog is cancelled or dismissed."
+            }
+          },
+          "required": ["component", "open", "title", "submitAction"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Input": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Input"
+            },
+            "value": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The input value; bind to a data model path for two-way binding."
+            },
+            "type": {
+              "type": "string",
+              "description": "Input kind. Defaults to text.",
+              "enum": ["text", "email", "password", "number", "tel", "url"],
+              "default": "text"
+            },
+            "placeholder": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Placeholder text."
+            },
+            "disabled": {
+              "type": "boolean",
+              "description": "Disables editing.",
+              "default": false
+            },
+            "error": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Inline error message."
+            }
+          },
+          "required": ["component", "value"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "LoadingSpinner": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "LoadingSpinner"
+            },
+            "size": {
+              "type": "string",
+              "description": "Spinner size. Defaults to md.",
+              "enum": ["sm", "md", "lg"],
+              "default": "md"
+            },
+            "message": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Optional loading message."
+            },
+            "overlay": {
+              "type": "boolean",
+              "description": "Renders as a full-area overlay.",
+              "default": true
+            }
+          },
+          "required": ["component"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Modal": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Modal"
+            },
+            "open": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Whether the modal is visible; bind to a data model path to toggle it."
+            },
+            "title": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Modal title."
+            },
+            "children": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ChildList",
+              "description": "Modal body components."
+            },
+            "footer": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ChildList",
+              "description": "Modal footer components (typically action buttons)."
+            },
+            "closeAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the modal is dismissed."
+            }
+          },
+          "required": ["component", "open", "title", "children"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Pagination": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Pagination"
+            },
+            "page": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
+              "description": "Current page number (1-based); bind to a data model path."
+            },
+            "total": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
+              "description": "Total item count."
+            },
+            "pageSize": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
+              "description": "Items per page."
+            },
+            "changeAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the page changes; the selected page should be returned in the event context."
+            }
+          },
+          "required": ["component", "page", "total"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "QueryListToolbar": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "QueryListToolbar"
+            },
+            "querySchema": {
+              "$ref": "#/$defs/QuerySchema",
+              "description": "The queryable fields this entity supports."
+            },
+            "filterChangeAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the applied filters change; the conditions should be returned in the event context."
+            },
+            "defaultIncludeDeleted": {
+              "type": "boolean",
+              "description": "Whether soft-deleted records are included by default.",
+              "default": false
+            }
+          },
+          "required": ["component", "querySchema", "filterChangeAction"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "SearchBar": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "SearchBar"
+            },
+            "value": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The search text; bind to a data model path for two-way binding."
+            },
+            "placeholder": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Placeholder text."
+            },
+            "debounceMs": {
+              "type": "number",
+              "description": "Debounce interval for value updates, in milliseconds."
+            },
+            "showAdvanced": {
+              "type": "boolean",
+              "description": "Shows the advanced-filter button.",
+              "default": false
+            },
+            "advancedAction": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/Action",
+              "description": "Dispatched when the advanced-filter button is activated."
+            }
+          },
+          "required": ["component", "value"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Select": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Select"
+            },
+            "value": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The selected option value; unselected is expressed as an empty data model path."
+            },
+            "options": {
+              "type": "array",
+              "description": "Static candidate options.",
+              "items": {
+                "$ref": "#/$defs/SelectOption"
+              }
+            },
+            "placeholder": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Placeholder text shown when nothing is selected."
+            },
+            "disabled": {
+              "type": "boolean",
+              "description": "Disables interaction.",
+              "default": false
+            }
+          },
+          "required": ["component", "options"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Text": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Text"
+            },
+            "text": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The text content to display; typically bound to a data model path."
+            },
+            "variant": {
+              "type": "string",
+              "description": "A hint for the base text style. Defaults to body.",
+              "enum": ["h1", "h2", "h3", "h4", "h5", "caption", "body"],
+              "default": "body"
+            }
+          },
+          "required": ["component", "text"]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Textarea": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Textarea"
+            },
+            "value": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "The text value; bind to a data model path for two-way binding."
+            },
+            "placeholder": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Placeholder text."
+            },
+            "rows": {
+              "type": "number",
+              "description": "Visible row count."
+            },
+            "disabled": {
+              "type": "boolean",
+              "description": "Disables editing.",
+              "default": false
+            },
+            "error": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Inline error message."
+            }
+          },
+          "required": ["component", "value"]
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  },
+  "$defs": {
+    "CatalogComponentCommon": {
+      "type": "object",
+      "properties": {
+        "weight": {
+          "type": "number",
+          "description": "The relative weight of this component within a Row or Column. This is similar to the CSS 'flex-grow' property. Note: this may ONLY be set when the component is a direct descendant of a Row or Column."
+        }
+      }
+    },
+    "SelectOption": {
+      "type": "object",
+      "description": "A single dropdown option.",
+      "properties": {
+        "value": {
+          "type": "string",
+          "description": "The option value."
+        },
+        "label": {
+          "type": "string",
+          "description": "The option display text."
+        }
+      },
+      "required": ["value", "label"],
+      "additionalProperties": false
+    },
+    "FileAutoFill": {
+      "type": "object",
+      "description": "File-tier probe backfill key declarations (pairs with the consumer's file probe).",
+      "properties": {
+        "mimeTypeKey": {
+          "type": "string",
+          "description": "The probed MIME is backfilled into this field."
+        },
+        "sizeBytesKey": {
+          "type": "string",
+          "description": "The probed byte size is backfilled into this field."
+        },
+        "sourceTypeKey": {
+          "type": "string",
+          "description": "A fixed value is backfilled into this field."
+        },
+        "sourceTypeValue": {
+          "type": "string",
+          "description": "The fixed backfill value for sourceTypeKey."
+        },
+        "titleKey": {
+          "type": "string",
+          "description": "Title field (fileName is backfilled only when the field is currently empty)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "FormFieldSchema": {
+      "type": "object",
+      "description": "A single form field declaration.",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Field key (wire protocol name)."
+        },
+        "label": {
+          "type": "string",
+          "description": "Field display label."
+        },
+        "type": {
+          "description": "Field tier; decides which input control renders.",
+          "enum": [
+            "input",
+            "textarea",
+            "select",
+            "reference",
+            "checkbox",
+            "directory",
+            "datetime",
+            "file"
+          ]
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the field must be filled."
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Placeholder text."
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "Disabled field (shows the current value but not editable)."
+        },
+        "hint": {
+          "type": "string",
+          "description": "Helper hint."
+        },
+        "options": {
+          "type": "array",
+          "description": "Select tier: static options.",
+          "items": {
+            "$ref": "#/$defs/SelectOption"
+          }
+        },
+        "reference": {
+          "type": "object",
+          "description": "Reference tier: the reference entity key (data source injected by the consumer).",
+          "properties": {
+            "entity": {
+              "type": "string"
+            }
+          },
+          "required": ["entity"],
+          "additionalProperties": false
+        },
+        "autoFill": {
+          "$ref": "#/$defs/FileAutoFill",
+          "description": "File tier: probe backfill key declarations."
+        }
+      },
+      "required": ["key", "label", "type"],
+      "additionalProperties": false
+    },
+    "FormSchema": {
+      "type": "object",
+      "description": "A form body declared as data.",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FormFieldSchema"
+          }
+        }
+      },
+      "required": ["fields"],
+      "additionalProperties": false
+    },
+    "QueryFieldSpec": {
+      "type": "object",
+      "description": "A single queryable field declaration.",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Field key (wire protocol name)."
+        },
+        "label": {
+          "type": "string",
+          "description": "Field display label."
+        },
+        "type": {
+          "description": "Field type; decides how values are parsed and which input control renders.",
+          "enum": [
+            "string",
+            "number",
+            "datetime",
+            "boolean",
+            "enum",
+            "reference"
+          ]
+        },
+        "operators": {
+          "type": "array",
+          "description": "The operator subset this field supports.",
+          "items": {
+            "enum": [
+              "eq",
+              "lt",
+              "lte",
+              "gt",
+              "gte",
+              "between",
+              "contains",
+              "in",
+              "is_null"
+            ]
+          }
+        },
+        "enumValues": {
+          "type": "array",
+          "description": "Enum candidate values when type is enum.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reference": {
+          "type": "object",
+          "description": "Reference entity key when type is reference (data source injected by the consumer).",
+          "properties": {
+            "entity": {
+              "type": "string"
+            }
+          },
+          "required": ["entity"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["key", "label", "type", "operators"],
+      "additionalProperties": false
+    },
+    "QuerySchema": {
+      "type": "object",
+      "description": "Describes which fields and operators an entity supports.",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QueryFieldSpec"
+          }
+        },
+        "defaultField": {
+          "type": "string",
+          "description": "The unique field key used for quick search (the main search box)."
+        }
+      },
+      "required": ["fields", "defaultField"],
+      "additionalProperties": false
+    },
+    "anyComponent": {
+      "oneOf": [
+        {
+          "$ref": "#/components/Button"
+        },
+        {
+          "$ref": "#/components/Checkbox"
+        },
+        {
+          "$ref": "#/components/ConfirmDialog"
+        },
+        {
+          "$ref": "#/components/DataTable"
+        },
+        {
+          "$ref": "#/components/EmptyState"
+        },
+        {
+          "$ref": "#/components/ErrorMessage"
+        },
+        {
+          "$ref": "#/components/FormDialog"
+        },
+        {
+          "$ref": "#/components/Input"
+        },
+        {
+          "$ref": "#/components/LoadingSpinner"
+        },
+        {
+          "$ref": "#/components/Modal"
+        },
+        {
+          "$ref": "#/components/Pagination"
+        },
+        {
+          "$ref": "#/components/QueryListToolbar"
+        },
+        {
+          "$ref": "#/components/SearchBar"
+        },
+        {
+          "$ref": "#/components/Select"
+        },
+        {
+          "$ref": "#/components/Text"
+        },
+        {
+          "$ref": "#/components/Textarea"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "component"
+      }
+    },
+    "DataBinding": {
+      "description": "A JSON Pointer (RFC 6901) path into the surface data model.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The JSON Pointer to the value."
+        }
+      },
+      "required": ["path"],
+      "additionalProperties": false
+    },
+    "DynamicValue": {
+      "description": "A value that can be a literal, a path, or a function call returning any type.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array"
+        },
+        {
+          "$ref": "#/$defs/DataBinding"
+        },
+        {
+          "$ref": "#/$defs/FunctionCall"
+        }
+      ]
+    },
+    "DynamicString": {
+      "description": "A string value that can be a literal, a path, or a function call returning a string.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/DataBinding"
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/FunctionCall"
+            },
+            {
+              "properties": {
+                "returnType": {
+                  "const": "string"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "DynamicBoolean": {
+      "description": "A boolean value that can be a literal, a path, or a function call returning a boolean.",
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/DataBinding"
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/FunctionCall"
+            },
+            {
+              "properties": {
+                "returnType": {
+                  "const": "boolean"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "FunctionCall": {
+      "type": "object",
+      "description": "Invokes a named function on the client.",
+      "properties": {
+        "call": {
+          "type": "string",
+          "description": "The name of the function to call."
+        },
+        "args": {
+          "type": "object",
+          "description": "Arguments passed to the function.",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/DynamicValue"
+              },
+              {
+                "type": "object",
+                "description": "A literal object argument (e.g. configuration)."
+              }
+            ]
+          }
+        },
+        "returnType": {
+          "type": "string",
+          "description": "The expected return type of the function call.",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "array",
+            "object",
+            "any",
+            "void"
+          ],
+          "default": "boolean"
+        }
+      },
+      "required": ["call"],
+      "oneOf": [
+        {
+          "$ref": "#/$defs/anyFunction"
+        }
+      ]
+    },
+    "anyFunction": {
+      "oneOf": [
+        {
+          "$ref": "#/functions/httpGet"
+        },
+        {
+          "$ref": "#/functions/httpPost"
+        },
+        {
+          "$ref": "#/functions/httpPut"
+        },
+        {
+          "$ref": "#/functions/httpPatch"
+        },
+        {
+          "$ref": "#/functions/httpDelete"
+        },
+        {
+          "$ref": "#/functions/not"
+        },
+        {
+          "$ref": "#/functions/eq"
+        }
+      ]
+    }
+  },
+  "functions": {
+    "httpGet": {
+      "type": "object",
+      "description": "Performs an HTTP GET request against the component's own API space. On a 2xx response the host re-runs every dataSpec query.",
+      "properties": {
+        "call": {
+          "const": "httpGet"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/DynamicString",
+              "description": "Request path relative to the component's own API space (the host prefixes the component namespace)."
+            },
+            "query": {
+              "type": "object",
+              "description": "Query parameters; each entry value is a DynamicValue evaluated before the request."
+            }
+          },
+          "required": ["path"],
+          "unevaluatedProperties": false
+        },
+        "returnType": {
+          "const": "void"
+        }
+      },
+      "required": ["call", "args"],
+      "unevaluatedProperties": false
+    },
+    "httpPost": {
+      "type": "object",
+      "description": "Performs an HTTP POST request against the component's own API space. On a 2xx response the host re-runs every dataSpec query.",
+      "properties": {
+        "call": {
+          "const": "httpPost"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/DynamicString",
+              "description": "Request path relative to the component's own API space (the host prefixes the component namespace)."
+            },
+            "body": {
+              "type": "object",
+              "description": "JSON request body; each entry value is a DynamicValue evaluated before the request."
+            },
+            "query": {
+              "type": "object",
+              "description": "Query parameters; each entry value is a DynamicValue evaluated before the request."
+            }
+          },
+          "required": ["path"],
+          "unevaluatedProperties": false
+        },
+        "returnType": {
+          "const": "void"
+        }
+      },
+      "required": ["call", "args"],
+      "unevaluatedProperties": false
+    },
+    "httpPut": {
+      "type": "object",
+      "description": "Performs an HTTP PUT request against the component's own API space. On a 2xx response the host re-runs every dataSpec query.",
+      "properties": {
+        "call": {
+          "const": "httpPut"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/DynamicString",
+              "description": "Request path relative to the component's own API space (the host prefixes the component namespace)."
+            },
+            "body": {
+              "type": "object",
+              "description": "JSON request body; each entry value is a DynamicValue evaluated before the request."
+            },
+            "query": {
+              "type": "object",
+              "description": "Query parameters; each entry value is a DynamicValue evaluated before the request."
+            }
+          },
+          "required": ["path"],
+          "unevaluatedProperties": false
+        },
+        "returnType": {
+          "const": "void"
+        }
+      },
+      "required": ["call", "args"],
+      "unevaluatedProperties": false
+    },
+    "httpPatch": {
+      "type": "object",
+      "description": "Performs an HTTP PATCH request against the component's own API space. On a 2xx response the host re-runs every dataSpec query.",
+      "properties": {
+        "call": {
+          "const": "httpPatch"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/DynamicString",
+              "description": "Request path relative to the component's own API space (the host prefixes the component namespace)."
+            },
+            "body": {
+              "type": "object",
+              "description": "JSON request body; each entry value is a DynamicValue evaluated before the request."
+            },
+            "query": {
+              "type": "object",
+              "description": "Query parameters; each entry value is a DynamicValue evaluated before the request."
+            }
+          },
+          "required": ["path"],
+          "unevaluatedProperties": false
+        },
+        "returnType": {
+          "const": "void"
+        }
+      },
+      "required": ["call", "args"],
+      "unevaluatedProperties": false
+    },
+    "httpDelete": {
+      "type": "object",
+      "description": "Performs an HTTP DELETE request against the component's own API space. On a 2xx response the host re-runs every dataSpec query.",
+      "properties": {
+        "call": {
+          "const": "httpDelete"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/DynamicString",
+              "description": "Request path relative to the component's own API space (the host prefixes the component namespace)."
+            },
+            "query": {
+              "type": "object",
+              "description": "Query parameters; each entry value is a DynamicValue evaluated before the request."
+            }
+          },
+          "required": ["path"],
+          "unevaluatedProperties": false
+        },
+        "returnType": {
+          "const": "void"
+        }
+      },
+      "required": ["call", "args"],
+      "unevaluatedProperties": false
+    },
+    "not": {
+      "type": "object",
+      "description": "Performs a logical NOT operation on a boolean value.",
+      "properties": {
+        "call": {
+          "const": "not"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "$ref": "#/$defs/DynamicBoolean",
+              "description": "The boolean value to negate."
+            }
+          },
+          "required": ["value"],
+          "unevaluatedProperties": false
+        },
+        "returnType": {
+          "const": "boolean"
+        }
+      },
+      "required": ["call", "args"],
+      "unevaluatedProperties": false
+    },
+    "eq": {
+      "type": "object",
+      "description": "Compares two values for strict equality and returns the boolean result.",
+      "properties": {
+        "call": {
+          "const": "eq"
+        },
+        "args": {
+          "type": "object",
+          "properties": {
+            "left": {
+              "$ref": "#/$defs/DynamicValue",
+              "description": "The first operand."
+            },
+            "right": {
+              "$ref": "#/$defs/DynamicValue",
+              "description": "The second operand."
+            }
+          },
+          "required": ["left", "right"],
+          "unevaluatedProperties": false
+        },
+        "returnType": {
+          "const": "boolean"
+        }
+      },
+      "required": ["call", "args"],
+      "unevaluatedProperties": false
+    }
+  }
+}

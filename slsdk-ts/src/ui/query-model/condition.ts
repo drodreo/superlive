@@ -1,5 +1,4 @@
 // QueryCondition: a single filter condition
-// Aligned with core/src/legacy/condition.rs as a cross-language protocol (copied verbatim from superlive ui).
 
 import type { QueryOperator } from "./operator";
 
@@ -16,7 +15,7 @@ export interface QueryCondition {
  * - range:    range comparison (between)
  * - set:      set membership (an alternative spelling of in)
  *
- * Serialization protocol (aligned with core/src/legacy/condition.rs):
+ * Serialization protocol:
  * - `type` tag field ("single" / "range" / "set")
  * - `data` content field (adjacent tagging)
  */
@@ -25,5 +24,5 @@ export type QueryValue =
   | { type: "range"; data: { min: QuerySingleValue; max: QuerySingleValue } }
   | { type: "set"; data: QuerySingleValue[] };
 
-/** QuerySingleValue: aligned with core/src/legacy/condition.rs::QuerySingleValue */
+/** QuerySingleValue: a scalar filter value */
 export type QuerySingleValue = string | number | boolean | null;

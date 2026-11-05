@@ -17,7 +17,7 @@ import type {
   QueryCondition,
   QueryFieldSpec,
   QueryValue,
-} from "../../../legacy";
+} from "../../query-model";
 import type { ReferenceSpec } from "../../types";
 import { QueryConditionRow } from "./QueryConditionRow";
 
