@@ -677,8 +677,8 @@ fn registry_dependencies_use_version_specs() {
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
     let cargo = fs::read_to_string(join_rel(&result.root, "server/Cargo.toml")).unwrap();
     let package = fs::read_to_string(join_rel(&result.root, "web/package.json")).unwrap();
-    assert!(cargo.contains("slsdk-rs = \"0.2\""));
-    assert!(package.contains("\"slsdk-ts\": \"^0.2.0\""));
+    assert!(cargo.contains("slsdk-rs = \"0.3\""));
+    assert!(package.contains("\"slsdk-ts\": \"^0.3.0\""));
 }
 
 #[test]
@@ -700,11 +700,19 @@ fn local_sdk_uses_forward_slash_path_and_file_lines() {
     let package = fs::read_to_string(join_rel(&result.root, "web/package.json")).unwrap();
     let expected_rs = format!(
         "slsdk-rs = {{ path = \"{}\" }}",
-        checkout.join("slsdk-rs").display().to_string().replace('\\', "/")
+        checkout
+            .join("slsdk-rs")
+            .display()
+            .to_string()
+            .replace('\\', "/")
     );
     let expected_ts = format!(
         "\"slsdk-ts\": \"file:{}\"",
-        checkout.join("slsdk-ts").display().to_string().replace('\\', "/")
+        checkout
+            .join("slsdk-ts")
+            .display()
+            .to_string()
+            .replace('\\', "/")
     );
     assert!(cargo.contains(&expected_rs), "cargo line: {cargo}");
     assert!(package.contains(&expected_ts), "package line: {package}");

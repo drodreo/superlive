@@ -93,8 +93,8 @@ pub enum BackendTemplate {
 /// How the generated project consumes the contract SDKs (`slsdk-rs` / `slsdk-ts`).
 #[derive(Debug, Clone)]
 pub enum SdkDependency {
-    /// Registry versions: `slsdk-rs = "0.2"` (crates.io) and
-    /// `"slsdk-ts": "^0.2.0"` (npm) — the standard consumption path.
+    /// Registry versions: `slsdk-rs = "0.3"` (crates.io) and
+    /// `"slsdk-ts": "^0.3.0"` (npm) — the standard consumption path.
     Registry,
     /// Path/file dependencies against a local superlive checkout, for developing
     /// against unreleased SDK changes. The checkout must contain `slsdk-rs/` and
