@@ -7,11 +7,14 @@
 //!   auth positive rule)
 //! - `/comps/{id}/*` component UI static (no token: scripts/dynamic imports
 //!   cannot carry custom headers)
+//! - `/subscriptions/{ns}/{path…}` push-channel ws feed (shell-level token
+//!   validated, auth positive rule)
 
 use crate::AppState;
 use crate::auth;
 use crate::config::SHELL_PORT;
 use crate::gateway;
+use crate::subscriptions;
 use axum::extract::{Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
@@ -40,6 +43,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             auth::require_bearer,
         ));
 
+    // Push-channel subscriptions: same auth positive rule as /api (a
+    // browser-native WebSocket cannot carry headers — require_bearer's
+    // ?token= query fallback is the ws compromise channel)
+    let subscriptions = Router::<Arc<AppState>>::new()
+        .route(
+            "/subscriptions/{*rest}",
+            any(subscriptions::subscriptions_handler),
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state.shell_token),
+            auth::require_bearer,
+        ));
+
     Router::<Arc<AppState>>::new()
         .merge(shell_api)
         // Static UI: only exposes the ui/ subdirectory inside the component
@@ -47,6 +63,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // architecture.md "Install and lifecycle" contract)
         .route("/comps/{*rest}", get(comps_static))
         .merge(component_api)
+        .merge(subscriptions)
         .with_state(state)
         // CORS covers every partition: the shell webview's origin
         // (tauri://localhost / http://tauri.localhost / dev's
@@ -97,7 +114,7 @@ async fn cors_middleware(req: Request, next: Next) -> Response {
         let headers = res.headers_mut();
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
-            HeaderValue::from_static("GET, POST, PUT, DELETE, HEAD, OPTIONS"),
+            HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS"),
         );
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
@@ -396,7 +413,7 @@ mod tests {
             res.headers()
                 .get(header::ACCESS_CONTROL_ALLOW_METHODS)
                 .unwrap(),
-            "GET, POST, PUT, DELETE, HEAD, OPTIONS"
+            "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS"
         );
     }
 

@@ -435,9 +435,12 @@ pub fn config_path_for(layout: &DataLayout, entry: &RegistryEntry) -> PathBuf {
 }
 
 /// Project version, same source as the packaging chain: `server/Cargo.toml`
-/// [package].version for Rust server shapes, the COMPONENT_VERSION constant in
-/// `server/server.ts` for the TS (deno/bun) server shapes, `web/package.json`
-/// "version" for frontend-only shapes.
+/// for Rust server shapes — `[workspace.package].version` first (a cargo
+/// workspace, monorepo included, declares the version once at the workspace
+/// root and members inherit it via `version.workspace = true`), falling back
+/// to `[package].version` for single-crate projects. The COMPONENT_VERSION
+/// constant in `server/server.ts` for the TS (deno/bun) server shapes,
+/// `web/package.json` "version" for frontend-only shapes.
 pub(crate) fn project_version(root: &Path, has_server: bool) -> Result<String, String> {
     if has_server {
         let cargo_toml = root.join("server").join("Cargo.toml");
@@ -457,11 +460,23 @@ pub(crate) fn project_version(root: &Path, has_server: bool) -> Result<String, S
         let parsed: toml::Value = toml::from_str(&text)
             .map_err(|e| format!("failed to parse {}: {e}", cargo_toml.display()))?;
         parsed
-            .get("package")
+            .get("workspace")
+            .and_then(|w| w.get("package"))
             .and_then(|p| p.get("version"))
             .and_then(|v| v.as_str())
+            .or_else(|| {
+                parsed
+                    .get("package")
+                    .and_then(|p| p.get("version"))
+                    .and_then(|v| v.as_str())
+            })
             .map(str::to_string)
-            .ok_or_else(|| format!("{} has no [package].version", cargo_toml.display()))
+            .ok_or_else(|| {
+                format!(
+                    "{} has no [workspace.package].version or [package].version",
+                    cargo_toml.display()
+                )
+            })
     } else {
         let package_json = root.join("web").join("package.json");
         let text = std::fs::read_to_string(&package_json)
@@ -502,37 +517,98 @@ fn extract_component_id(text: &str) -> Option<String> {
 }
 
 /// Source-identity check (server shapes): the declaration id must match the
-/// COMPONENT_ID constant in server/src/main.rs — a drifted constant makes the
-/// component's /health self-report disagree with the declaration, which
-/// misaligns the health probe and the gateway dispatch. A missing file or
-/// constant only warns (a broken template surfaces as its own compile error).
+/// COMPONENT_ID constant in the server's main.rs — a drifted constant makes
+/// the component's /health self-report disagree with the declaration, which
+/// misaligns the health probe and the gateway dispatch. Every candidate
+/// main.rs found must agree with the declaration; a missing file or constant
+/// only warns (a broken template surfaces as its own compile error).
 fn check_server_component_id(project_dir: &Path, declared_id: &str) -> Result<(), String> {
-    let main_rs = project_dir.join("server").join("src").join("main.rs");
-    let text = match std::fs::read_to_string(&main_rs) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            log::warn!(
-                "dev component {declared_id}: {} not found, skipping the component-id source check",
+    let mut found = 0usize;
+    let mut last_missing = None;
+    for main_rs in server_main_rs_candidates(project_dir) {
+        let text = match std::fs::read_to_string(&main_rs) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                last_missing = Some((main_rs, e));
+                continue;
+            }
+            Err(e) => return Err(format!("failed to read {}: {e}", main_rs.display())),
+        };
+        let Some(constant_id) = extract_component_id(&text) else {
+            continue;
+        };
+        found += 1;
+        if constant_id != declared_id {
+            return Err(format!(
+                "source identity drift: the declaration id is \"{declared_id}\" but {} declares COMPONENT_ID = \"{constant_id}\"",
                 main_rs.display()
-            );
-            return Ok(());
+            ));
         }
-        Err(e) => return Err(format!("failed to read {}: {e}", main_rs.display())),
-    };
-    let Some(constant_id) = extract_component_id(&text) else {
+    }
+    if found == 0 {
+        let where_ = last_missing
+            .map(|(p, _)| p.display().to_string())
+            .unwrap_or_else(|| "any candidate main.rs".to_string());
         log::warn!(
-            "dev component {declared_id}: no COMPONENT_ID constant in {}, skipping the component-id source check",
-            main_rs.display()
+            "dev component {declared_id}: no COMPONENT_ID constant found ({where_} missing or without one), skipping the component-id source check"
         );
-        return Ok(());
-    };
-    if constant_id != declared_id {
-        return Err(format!(
-            "source identity drift: the declaration id is \"{declared_id}\" but {} declares COMPONENT_ID = \"{constant_id}\"",
-            main_rs.display()
-        ));
     }
     Ok(())
+}
+
+/// Candidate main.rs paths for the identity check, mirroring the version
+/// source's shape handling ([`project_version`]): `server/src/main.rs` for
+/// single-crate projects, plus every declared workspace member's
+/// `src/main.rs` when `server/Cargo.toml` declares `[workspace]` — cargo
+/// workspaces put the server crate in a member directory (e.g.
+/// `server/server/src/main.rs`), so a single-crate-only probe silently
+/// misses them. Member names are flat strings; a trailing `/*` glob expands
+/// to the workspace root's one-level subdirectories (sorted for stable
+/// ordering). Non-existent candidates are simply skipped by the caller.
+fn server_main_rs_candidates(project_dir: &Path) -> Vec<PathBuf> {
+    let server = project_dir.join("server");
+    let mut candidates = vec![server.join("src").join("main.rs")];
+    let Ok(text) = std::fs::read_to_string(server.join("Cargo.toml")) else {
+        return candidates;
+    };
+    let Ok(parsed) = toml::from_str::<toml::Value>(&text) else {
+        return candidates;
+    };
+    let Some(members) = parsed
+        .get("workspace")
+        .and_then(|w| w.get("members"))
+        .and_then(|m| m.as_array())
+    else {
+        return candidates;
+    };
+    for member in members {
+        let Some(name) = member.as_str() else {
+            continue;
+        };
+        if let Some(prefix) = name.strip_suffix("/*") {
+            let mut expanded: Vec<PathBuf> = std::fs::read_dir(&server)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.is_dir())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|base| base.starts_with(prefix))
+                })
+                .collect();
+            expanded.sort();
+            candidates.extend(
+                expanded
+                    .into_iter()
+                    .map(|dir| dir.join("src").join("main.rs")),
+            );
+        } else {
+            candidates.push(server.join(name).join("src").join("main.rs"));
+        }
+    }
+    candidates
 }
 
 /// Start/reload semantics for a dev entry (architecture.md "Creation flow"):
@@ -636,6 +712,51 @@ pub fn ensure_launch_artifact(entry: &RegistryEntry) -> Result<(), String> {
 mod tests {
     use super::*;
     use slsdk_rs::UiType;
+
+    /// Writes `server/Cargo.toml` under a temp project root — the version
+    /// source for Rust server shapes.
+    fn project_with_cargo_toml(cargo_toml: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("server")).unwrap();
+        std::fs::write(dir.path().join("server").join("Cargo.toml"), cargo_toml).unwrap();
+        dir
+    }
+
+    #[test]
+    fn project_version_reads_workspace_package_version() {
+        // Cargo workspace shape (monorepo included): the version lives once
+        // in [workspace.package] at the workspace root; members inherit via
+        // version.workspace = true.
+        let dir = project_with_cargo_toml(
+            "[workspace]\nmembers = [\"server\"]\n\n[workspace.package]\nversion = \"0.3.0\"\nedition = \"2021\"\n",
+        );
+        assert_eq!(project_version(dir.path(), true).unwrap(), "0.3.0");
+    }
+
+    #[test]
+    fn project_version_prefers_workspace_over_package() {
+        // Root-package hybrid: [workspace.package].version is the authority.
+        let dir = project_with_cargo_toml(
+            "[workspace]\nmembers = [\"server\"]\n\n[workspace.package]\nversion = \"0.3.0\"\n\n[package]\nname = \"hybrid\"\nversion = \"0.1.0\"\n",
+        );
+        assert_eq!(project_version(dir.path(), true).unwrap(), "0.3.0");
+    }
+
+    #[test]
+    fn project_version_falls_back_to_single_crate_package() {
+        let dir = project_with_cargo_toml("[package]\nname = \"solo\"\nversion = \"0.2.1\"\n");
+        assert_eq!(project_version(dir.path(), true).unwrap(), "0.2.1");
+    }
+
+    #[test]
+    fn project_version_rejects_a_versionless_cargo_toml() {
+        let dir = project_with_cargo_toml("[workspace]\nmembers = [\"server\"]\n");
+        assert!(
+            project_version(dir.path(), true)
+                .unwrap_err()
+                .contains("has no [workspace.package].version or [package].version")
+        );
+    }
 
     fn manifest(id: &str, ns: &str) -> ComponentManifest {
         serde_json::from_str(&format!(
@@ -1116,6 +1237,45 @@ mod tests {
         persist_entry_sync(&layout, &entry).unwrap();
 
         let err = refresh_dev_entry(&layout, &entry).await.unwrap_err();
+        assert!(err.contains("source identity drift"), "{err}");
+    }
+
+    // ---------- source identity (check_server_component_id) ----------
+
+    /// Workspace-layout project: the server crate lives in a member
+    /// directory (server/<member>/src/main.rs), not server/src/main.rs.
+    /// The identity check must probe members — before workspace probing it
+    /// silently skipped and a drifted constant went unnoticed.
+    fn write_workspace_server_sources(project: &Path, member: &str, component_id: &str) {
+        std::fs::create_dir_all(project.join("server").join(member).join("src")).unwrap();
+        std::fs::write(
+            project.join("server/Cargo.toml"),
+            format!(
+                "[workspace]\nresolver = \"2\"\nmembers = [\"{member}\"]\n\n[workspace.package]\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            project.join("server").join(member).join("src/main.rs"),
+            format!("const COMPONENT_ID: &str = \"{component_id}\";\nfn main() {{}}\n"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn identity_check_probes_workspace_member_main_rs() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("proj");
+        write_workspace_server_sources(&project, "server", "xatodo");
+        assert!(check_server_component_id(&project, "xatodo").is_ok());
+    }
+
+    #[test]
+    fn identity_check_catches_workspace_member_drift() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("proj");
+        write_workspace_server_sources(&project, "server", "drifted-id");
+        let err = check_server_component_id(&project, "declared-id").unwrap_err();
         assert!(err.contains("source identity drift"), "{err}");
     }
 

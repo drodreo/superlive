@@ -3337,10 +3337,11 @@ version = "0.1.0"
 
 [[package]]
 name = "slsdk-rs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "cron",
+ "futures-core",
  "log",
  "serde",
  "serde_json",
@@ -3461,9 +3462,11 @@ name = "superlive-shell"
 version = "0.2.2"
 dependencies = [
  "axum",
+ "futures-core",
  "http-body-util",
  "hyper",
  "hyper-util",
+ "libc",
  "log",
  "nix",
  "rand",

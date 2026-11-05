@@ -19,7 +19,7 @@ export const SHELL_ORIGIN = "http://127.0.0.1:39876";
 // (slsdk_rs's serde form).
 
 export interface UiDeclaration {
-  ui_type: "module" | "iframe";
+  ui_type: "module" | "iframe" | "surface";
   entry: string;
 }
 

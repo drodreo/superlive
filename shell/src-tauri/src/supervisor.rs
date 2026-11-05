@@ -143,6 +143,7 @@ pub(crate) async fn launch_with_transition(
         manifest,
         workdir,
         HEALTH_TIMEOUT,
+        state.app.clone(),
     )
     .await;
     match &result {

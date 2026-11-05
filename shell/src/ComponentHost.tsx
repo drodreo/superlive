@@ -15,6 +15,7 @@ import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { componentAssetUrl, type ComponentInfo } from "./api";
 import i18n from "./i18n";
+import { SurfaceHost } from "./SurfaceHost";
 
 /** The minimal props contract a module-tier component receives: the shell route path passed through verbatim, consumed at the component's own discretion. */
 export interface ComponentModuleProps {
@@ -98,6 +99,13 @@ export function ComponentHost({
   // only reachable by manual URL navigation.
   if (!info.ui) {
     return null;
+  }
+
+  // surface tier: a description-driven component with no JS of its own — the
+  // shell fetches the description file and hosts the rendering itself (see
+  // SurfaceHost). Like the iframe tier it needs no lazy module wrapper.
+  if (info.ui.ui_type === "surface") {
+    return <SurfaceHost info={info} />;
   }
 
   // iframe tier: the static entry mounted directly. src is the full address

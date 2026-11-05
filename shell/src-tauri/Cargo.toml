@@ -54,10 +54,17 @@ toml = "0.8"
 # unix graceful exit sends SIGTERM (tokio only has SIGKILL-grade start_kill;
 # nix is the safe wrapper, no unsafe)
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal"] }
+nix = { version = "0.29", features = ["signal", "process"] }
+# PDEATHSIG fork-exec race backstop: libc::_exit (async-signal-safe) inside
+# pre_exec; already in the tree via nix — declared here, zero extra compilation
+libc = "0.2"
 
 [dev-dependencies]
 # Temp directories for the installer/lifecycle tests
 tempfile = "3"
 # Test-side router.oneshot (auth/gateway/server tests)
 tower = "0.5"
+# subscriptions tests: the mock component's /events endpoint streams a
+# broadcast feed as chunked NDJSON, which needs a futures_core::Stream impl
+# (already in the dependency tree via axum/slsdk-rs — no new code compiled in)
+futures-core = "0.3"

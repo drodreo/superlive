@@ -32,6 +32,8 @@ const zh = {
   // Component host (module-tier container)
   "host.loading": "组件加载中…",
   "host.renderFailed": "组件加载或渲染失败：{{error}}",
+  "host.surfaceLoadFailed": "组件描述加载失败：{{error}}",
+  "host.retry": "重试",
 
   // Settings page
   "settings.update": "应用更新",
@@ -227,6 +229,8 @@ const en: Record<ShellKey, string> = {
   // Component host (module-tier container)
   "host.loading": "Loading component…",
   "host.renderFailed": "Component failed to load or render: {{error}}",
+  "host.surfaceLoadFailed": "Component description failed to load: {{error}}",
+  "host.retry": "Retry",
 
   // Settings page
   "settings.update": "App update",

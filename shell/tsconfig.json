@@ -11,7 +11,11 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shell/sdk/ui": ["../slsdk-ts/src/ui/index.ts"]
+    }
   },
   "include": ["src"]
 }

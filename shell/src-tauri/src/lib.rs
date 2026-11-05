@@ -30,6 +30,7 @@ pub mod installer;
 pub mod lifecycle;
 pub mod registry;
 pub mod server;
+pub mod subscriptions;
 pub mod supervisor;
 
 use config::DataLayout;
@@ -43,7 +44,11 @@ use tauri::Manager;
 pub struct AppState {
     pub(crate) layout: Arc<DataLayout>,
     pub(crate) registry: Arc<registry::Registry>,
+    pub(crate) subscriptions: Arc<subscriptions::SubscriptionHub>,
     pub(crate) shell_token: Arc<String>,
+    /// Tauri app handle: the shell→UI push channel (component exit broadcast).
+    /// `None` in tests (no tauri app exists there); assigned in setup.
+    pub(crate) app: Option<tauri::AppHandle>,
 }
 
 impl AppState {
@@ -56,7 +61,9 @@ impl AppState {
         Ok(Self {
             layout,
             registry: Arc::new(registry::Registry::new()),
+            subscriptions: Arc::new(subscriptions::SubscriptionHub::new()),
             shell_token: Arc::new(auth::generate_token()),
+            app: None,
         })
     }
 }
@@ -79,7 +86,9 @@ pub fn run() {
             // The data directory is resolved by tauri per platform convention
             // (Linux: ~/.local/share/<identifier>)
             let data_dir: PathBuf = app.path().app_data_dir()?;
-            let state = AppState::new(data_dir)?;
+            let mut state = AppState::new(data_dir)?;
+            // Shell→UI push channel (component exit broadcast); tests keep None
+            state.app = Some(app.handle().clone());
             log::info!("shell data directory: {}", state.layout.root().display());
 
             // Embedded HTTP service: a bind failure does not block shell

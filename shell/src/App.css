@@ -552,6 +552,22 @@ body {
   font-size: 13px;
 }
 
+.comp-error button {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--err-border);
+  background: transparent;
+  color: var(--err-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.comp-error button:hover {
+  background: var(--err-bg);
+  filter: brightness(1.1);
+}
+
 /* ---------- Configuration plane (state badges / config page / modals) ---------- */
 
 /* Component four-state badge (needs-config / ready / running / stopped) */

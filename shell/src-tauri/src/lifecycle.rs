@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::watch;
 
@@ -143,6 +144,7 @@ pub async fn spawn_component(
     manifest: Arc<ComponentManifest>,
     workdir: PathBuf,
     health_timeout: Duration,
+    app: Option<AppHandle>,
 ) -> Result<(), LifecycleError> {
     // launch=None (pure-frontend shape): no backend process to spawn — succeed
     // as a no-op. Every start path funnels through this single entry, so the
@@ -187,6 +189,32 @@ pub async fn spawn_component(
         .env(ENV_ENDPOINT, endpoint.to_string())
         .env(ENV_TOKEN, token.as_str())
         .current_dir(&workdir);
+
+    #[cfg(unix)]
+    {
+        // Orphan-source fix: the kernel delivers SIGKILL to the component the
+        // moment the shell dies (any form — crash, external kill, normal
+        // exit), so a dead shell can no longer leak live component processes.
+        // PDEATHSIG is per-thread (it watches the thread that forked): tokio
+        // worker threads live as long as the process, which makes it safe
+        // here — never move this spawn into `spawn_blocking` (disposable
+        // blocking threads would kill healthy components).
+        let shell_pid = nix::unistd::getpid().as_raw();
+        unsafe {
+            command.pre_exec(move || {
+                nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
+                    .map_err(io::Error::other)?;
+                // Race window: if the shell died between fork and prctl, the
+                // signal never fires — a parent already different from the
+                // spawning shell means we are an orphan right now; exit
+                // immediately (async-signal-safe _exit, exec never happens).
+                if nix::unistd::getppid().as_raw() != shell_pid {
+                    libc::_exit(1);
+                }
+                Ok(())
+            });
+        }
+    }
 
     let mut child = command
         .spawn()
@@ -241,6 +269,7 @@ pub async fn spawn_component(
         socket_path,
         registry: Arc::clone(registry),
         layout: layout.clone(),
+        app,
     };
     tokio::spawn(supervise(child, shutdown, stop_rx, ctx));
     log::info!(
@@ -368,6 +397,9 @@ struct SuperviseContext {
     socket_path: Option<PathBuf>,
     registry: Arc<Registry>,
     layout: DataLayout,
+    /// Shell→UI push channel: the exit broadcast the management list listens
+    /// for (None in tests).
+    app: Option<AppHandle>,
 }
 
 /// Exit guard: waits for a natural exit or a stop signal; a stop signal
@@ -387,6 +419,7 @@ async fn supervise(
         socket_path,
         registry,
         layout,
+        app,
     } = ctx;
     let namespace = manifest.namespace.clone();
     // Phase one: wait for natural exit or a stop signal. Do not touch child
@@ -491,6 +524,20 @@ async fn supervise(
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => log::warn!("socket cleanup failed for component {namespace} ({path:?}): {e}"),
+        }
+    }
+
+    // Exit broadcast (the UI's only passive-refresh channel): an external
+    // kill / crash is invisible to the management page's own action flow, so
+    // the shell pushes "this component just exited" and the list re-fetches.
+    // Emitted last: by the time the UI reacts, the running table and the
+    // settled meta are already consistent with the event.
+    if let Some(app) = &app {
+        if let Err(e) = app.emit(
+            "component-exited",
+            serde_json::json!({ "id": manifest.id, "namespace": namespace }),
+        ) {
+            log::warn!("failed to broadcast the exit of component {namespace}: {e}");
         }
     }
 }
@@ -646,6 +693,7 @@ mod tests {
             Arc::clone(&m),
             layout.component_dir("sleeper"),
             Duration::from_millis(600),
+            None,
         )
         .await;
         assert!(matches!(result, Err(LifecycleError::HealthTimeout { .. })));
@@ -688,6 +736,7 @@ mod tests {
                 socket_path: None,
                 registry: Arc::clone(&registry),
                 layout: layout.clone(),
+                app: None,
             },
         ));
         // Give supervise time to enter the wait state
@@ -739,6 +788,7 @@ mod tests {
                 socket_path: None,
                 registry: Arc::clone(&registry),
                 layout: layout.clone(),
+                app: None,
             },
         ));
         // Give supervise time to enter the wait state
@@ -760,6 +810,83 @@ mod tests {
             .expect("meta should be persisted after exit");
         assert_eq!(meta.state, crate::config_plane::ComponentState::Stopped);
         assert_eq!(meta.launch_policy, crate::config_plane::LaunchPolicy::Auto);
+    }
+
+    /// External SIGKILL (any death form) must trigger the full exit cleanup:
+    /// supervise's child.wait() arm treats a killed child exactly like a
+    /// natural exit — running-table removal + settled-state persistence — so
+    /// the management surface cannot stay on "running" after the process is
+    /// gone. This is the shell-side half of the bug-③ contract; the UI half
+    /// is the component-exited broadcast.
+    #[tokio::test]
+    async fn supervise_cleans_up_when_child_is_sigkilled() {
+        let (stop_tx, stop_rx) = watch::channel(());
+        let child = Command::new("/bin/sleep")
+            .arg("30")
+            .stdin(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id().expect("a freshly spawned child carries a pid");
+        let registry = Arc::new(Registry::new());
+        let dir = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(dir.path());
+        // Runtime registration in place (the state the management page reads
+        // "running" from): the kill must sweep it away.
+        registry
+            .register(
+                "killedns",
+                RunningComponent {
+                    manifest: Arc::new(manifest("killedapp", "killedns", "/bin/sleep", &["30"])),
+                    endpoint: Endpoint::Tcp {
+                        addr: "127.0.0.1:1".parse().unwrap(),
+                    },
+                    token: Arc::new("tok".to_string()),
+                    pid: Some(pid),
+                    stop: stop_tx,
+                },
+            )
+            .await
+            .unwrap();
+
+        let handle = tokio::spawn(supervise(
+            child,
+            ShutdownChannel {
+                pid: Some(pid),
+                stdin: None,
+            },
+            stop_rx,
+            SuperviseContext {
+                manifest: Arc::new(manifest("killedapp", "killedns", "/bin/sleep", &["30"])),
+                workdir: dir.path().join("work"),
+                socket_path: None,
+                registry: Arc::clone(&registry),
+                layout: layout.clone(),
+                app: None,
+            },
+        ));
+        // Let supervise settle into the child.wait() arm
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        // External kill: nothing in the shell asked for a stop — supervise
+        // must still observe the death and clean up.
+        nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(pid as i32),
+            nix::sys::signal::Signal::SIGKILL,
+        )
+        .unwrap();
+
+        let joined = tokio::time::timeout(Duration::from_secs(5), handle).await;
+        assert!(
+            joined.is_ok(),
+            "supervise should return promptly after the child is SIGKILLed"
+        );
+        assert!(
+            registry.lookup("killedns").await.is_none(),
+            "the killed component must leave the running table"
+        );
+        let meta = crate::config_plane::load_meta(&layout, "killedapp")
+            .await
+            .expect("meta should be persisted after exit");
+        assert_eq!(meta.state, crate::config_plane::ComponentState::Stopped);
     }
 
     /// Gate semantics of exit cleanup: a component exiting with missing
@@ -807,6 +934,7 @@ mod tests {
                 socket_path: None,
                 registry: Arc::clone(&registry),
                 layout: layout.clone(),
+                app: None,
             },
         ));
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -862,6 +990,7 @@ mod tests {
             m,
             layout.component_dir("e2eapp"),
             Duration::from_secs(3),
+            None,
         )
         .await
         .unwrap();

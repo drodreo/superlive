@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { firstValueFrom, type Observable } from "rxjs";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
@@ -100,6 +101,18 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   }, []);
 
   useEffect(() => refresh(), [refresh]);
+
+  // Passive refresh: the shell broadcasts "component-exited" whenever a
+  // component process dies (crash / external kill / graceful stop). Without
+  // this channel a badge stays on "running" until the next manual action —
+  // an external kill is invisible to this page's own action flow, so the
+  // shell's push is the only thing that can reach the UI in time.
+  useEffect(() => {
+    const unlisten = listen("component-exited", () => refresh());
+    return () => {
+      void unlisten.then((f) => f());
+    };
+  }, [refresh]);
 
   // Window drag-and-drop install: the drop event's paths are real disk
   // paths, matching the install contract directly

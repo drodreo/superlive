@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "tauri": "tauri",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -29,13 +30,16 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4",
     "esbuild": "0.25.12",
+    "jsdom": "^29.1.1",
     "prettier": "^3.9.10",
     "typescript": "^5",
-    "vite": "^6"
+    "vite": "^6",
+    "vitest": "^5.0.5"
   }
 }

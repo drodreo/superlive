@@ -181,6 +181,10 @@ const WHITELIST_IMPORTS = [
   // namespaces into the host instance (no per-component copies)
   "i18next",
   "react-i18next",
+  // The sdk-ui entry (SurfaceHost mounts <A2uiSurface>): same import-map
+  // singleton discipline as the components — the shell code and the
+  // component artifacts must share one renderer module graph
+  "@shell/sdk/ui",
 ];
 
 // Direct-build specs for the react-family shims. For the singleton design see
@@ -334,13 +338,32 @@ function esbuildDirectBundle(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react(), vendorDevServer(), esbuildDirectBundle()],
+  // Dev mode has no rollup external pass: the shell's bare sdk-ui import is
+  // aliased to the slsdk-ts ui entry source, so vite transforms it through
+  // the normal pipeline — its bare react/react-dom/rxjs/i18next imports are
+  // rewritten to the same pre-bundled deps the shell itself uses (one module
+  // graph on the shell side, plus HMR on slsdk-ts source changes). Build mode
+  // keeps the bare import (WHITELIST_IMPORTS external) and index.html's
+  // import map resolves it at runtime. Components (served outside vite on
+  // the shell origin) keep using the import map's /vendor/slsdk-ui.js URL —
+  // vendorDevServer still serves that artifact.
+  resolve:
+    command === "serve"
+      ? { alias: { "@shell/sdk/ui": SLSDK_UI_ENTRY } }
+      : undefined,
   // tauri dev mode uses a fixed port, avoiding config changes every time
   clearScreen: false,
   server: {
     port: 5173,
     strictPort: true,
+    // The sdk-ui alias serves slsdk-ts sources from outside the shell root
+    // (no workspace root above them) — allow that subtree explicitly, the
+    // shell root itself stays allowed by listing it alongside
+    fs: {
+      allow: [root, resolve(root, "../slsdk-ts/src")],
+    },
   },
   build: {
     rollupOptions: {
@@ -360,4 +383,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
