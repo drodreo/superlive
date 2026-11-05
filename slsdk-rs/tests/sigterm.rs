@@ -16,13 +16,18 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 fn main() {
-    if std::env::var_os("SIGTERM_PROBE_CHILD").is_some() {
-        child();
-    } else if std::env::var_os("SIGTERM_PROBE_CHILD_EVENTS").is_some() {
-        child_events();
-    } else {
-        parent_no_subscription();
-        parent_with_subscription();
+    // SIGTERM is a unix signal — windows graceful exit goes through the
+    // stdin-EOF channel instead, so this binary is a no-op there.
+    #[cfg(unix)]
+    {
+        if std::env::var_os("SIGTERM_PROBE_CHILD").is_some() {
+            child();
+        } else if std::env::var_os("SIGTERM_PROBE_CHILD_EVENTS").is_some() {
+            child_events();
+        } else {
+            parent_no_subscription();
+            parent_with_subscription();
+        }
     }
 }
 
