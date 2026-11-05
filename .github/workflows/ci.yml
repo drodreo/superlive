@@ -43,11 +43,18 @@ jobs:
           cd slsdk-ts
           pnpm install --frozen-lockfile
           pnpm build
-      - name: cargo test (all three crates)
+      - name: cargo test (sdk + scaffold crates)
         run: |
           cargo test --manifest-path slsdk-rs/Cargo.toml
           cargo test --manifest-path slscaffold/Cargo.toml
-          cargo test --manifest-path shell/src-tauri/Cargo.toml
+      # The shell crate's lib links tauri symbols; on windows the test exe
+      # fails to start with STATUS_ENTRYPOINT_NOT_FOUND (tauri-apps/tauri
+      # #14580, #13419 — the tauri build script links GUI resources into the
+      # test binary and the loader cannot resolve those entry points).
+      # Revisit when the upstream issue lands.
+      - name: cargo test (shell crate, non-windows)
+        if: runner.os != 'Windows'
+        run: cargo test --manifest-path shell/src-tauri/Cargo.toml
       # Format and lint checks run once on Linux: rustfmt/clippy behavior is
       # pinned by rust-toolchain.toml, so one platform is authoritative.
       - name: cargo fmt --check (Linux)
