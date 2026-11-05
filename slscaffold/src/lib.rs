@@ -480,8 +480,8 @@ fn render_plan(
 
     let (rs_line, ts_line, dep_desc) = match &req.sdk {
         SdkDependency::Registry => (
-            r#"slsdk-rs = "0.2""#.to_string(),
-            r#""slsdk-ts": "^0.2.0""#.to_string(),
+            r#"slsdk-rs = "0.3""#.to_string(),
+            r#""slsdk-ts": "^0.3.0""#.to_string(),
             "This project was generated with registry dependencies (slsdk-rs from crates.io, \
              slsdk-ts from npm) — the standard consumption path."
                 .to_string(),
