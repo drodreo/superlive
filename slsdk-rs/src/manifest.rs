@@ -84,7 +84,8 @@ pub enum TransportCaps {
     TcpOnly,
 }
 
-/// UI mounting shape (architecture.md "Plane A Contract": two UI container tiers).
+/// UI mounting shape (architecture.md "Plane A Contract": two UI container tiers
+/// plus the description-driven surface tier).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UiType {
@@ -94,13 +95,19 @@ pub enum UiType {
     /// Components with heterogeneous stacks or needing isolation: the shell mounts them in
     /// an iframe container.
     Iframe,
+    /// Description-driven surface (A2UI `ServerToClientMessage` document): the
+    /// component ships no JS of its own — the shell fetches the description
+    /// file from the component's static space and hosts the rendering (and
+    /// the declarative data flow) itself.
+    Surface,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiDeclaration {
     pub ui_type: UiType,
     /// Relative path of the UI entry: an ESM bundle for the module tier (e.g.
-    /// `assets/main.js`), HTML for the iframe tier.
+    /// `assets/main.js`), HTML for the iframe tier, the description document
+    /// for the surface tier (e.g. `surface.json`).
     pub entry: String,
 }
 
@@ -690,5 +697,44 @@ mod transport_tests {
 
         let round: ComponentManifest = serde_json::from_str(&bytes).unwrap();
         assert_eq!(round.transport, None);
+    }
+}
+
+#[cfg(test)]
+mod ui_type_tests {
+    use super::*;
+
+    #[test]
+    fn surface_ui_type_round_trips_through_serde() {
+        assert_eq!(
+            serde_json::to_string(&UiType::Surface).unwrap(),
+            "\"surface\""
+        );
+        let back: UiType = serde_json::from_str("\"surface\"").unwrap();
+        assert_eq!(back, UiType::Surface);
+    }
+
+    #[test]
+    fn surface_declaration_round_trips_through_serde() {
+        let declaration: UiDeclaration =
+            serde_json::from_str(r#"{ "ui_type": "surface", "entry": "surface.json" }"#).unwrap();
+        assert_eq!(declaration.ui_type, UiType::Surface);
+        assert_eq!(declaration.entry, "surface.json");
+
+        let bytes = serde_json::to_string(&declaration).unwrap();
+        let back: UiDeclaration = serde_json::from_str(&bytes).unwrap();
+        assert_eq!(back, declaration);
+    }
+
+    #[test]
+    fn module_and_iframe_ui_types_keep_their_wire_names() {
+        assert_eq!(
+            serde_json::to_string(&UiType::Module).unwrap(),
+            "\"module\""
+        );
+        assert_eq!(
+            serde_json::to_string(&UiType::Iframe).unwrap(),
+            "\"iframe\""
+        );
     }
 }

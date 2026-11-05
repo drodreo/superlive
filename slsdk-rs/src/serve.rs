@@ -14,6 +14,7 @@
 
 use crate::config::{ConfigIntegration, ConfigStore, config_router};
 use crate::endpoint::{ENV_ENDPOINT, ENV_TOKEN, Endpoint, EndpointParseError};
+use crate::events::{A2uiNotifier, events_router};
 use crate::manifest::ComponentManifest;
 use axum::Router;
 use axum::extract::{Request, State};
@@ -100,6 +101,13 @@ pub struct ServeInfo {
     pub endpoint: Endpoint,
     /// Handle for proactively triggering exit.
     pub shutdown: ShutdownHandle,
+    /// The notifier actually wired into the mounted `/events` endpoint.
+    /// Entries that don't care about pushing never touch it: with no pushes
+    /// and no subscribers the endpoint idles. Late-wiring authors (state
+    /// assembled after serve() returned) can grab it here instead of passing
+    /// one in — but the idiomatic shape is building your own and handing it
+    /// to [`serve_with_events`] so the router state holds the same handle.
+    pub notifier: A2uiNotifier,
     join: tokio::task::JoinHandle<std::io::Result<()>>,
 }
 
@@ -130,12 +138,13 @@ impl ServeInfo {
     }
 }
 
-/// Component backend service entry: assembles business routes + the health endpoint, selects
-/// the transport per platform and listens.
+/// Component backend service entry: assembles business routes + the health endpoint + the
+/// standard event endpoint, selects the transport per platform and listens.
 ///
-/// **Reserved path**: `/health` is mounted by the SDK (readiness probe and health check
-/// share one endpoint); author routes must not register the same path — axum Router::merge
-/// panics directly on overlapping routes.
+/// **Reserved paths**: `/health` (readiness probe and health check share one endpoint) and
+/// `/events` (the standardized push feed, see the [`crate::events`] module docs) are mounted
+/// by the SDK; author routes must not register the same paths — axum Router::merge panics
+/// directly on overlapping routes.
 /// Warns when the manifest declares a config section but the config endpoint is not
 /// integrated (see [`serve_with_config`]).
 ///
@@ -165,6 +174,25 @@ pub async fn serve_with_config(
     routes: Router,
     manifest: &ComponentManifest,
     config: Option<ConfigIntegration>,
+) -> Result<ServeInfo, ServeError> {
+    // No author handle passed: serve() mounts an idle notifier so the event
+    // endpoint is part of the standard plane even for components that never
+    // push (the shell can still subscribe; it simply never receives).
+    serve_with_events(routes, manifest, config, A2uiNotifier::new()).await
+}
+
+/// Event-plane entry of [`serve`]: the author owns the notifier and passes
+/// it here so the mounted `GET /events` endpoint and the author's router
+/// state share one push handle (clone it into your state BEFORE calling —
+/// the handle is `Clone`, the endpoint receives a private copy).
+///
+/// All other semantics identical to [`serve`]/[`serve_with_config`] (reserved
+/// paths, env contract, transport selection, token middleware).
+pub async fn serve_with_events(
+    routes: Router,
+    manifest: &ComponentManifest,
+    config: Option<ConfigIntegration>,
+    events: A2uiNotifier,
 ) -> Result<ServeInfo, ServeError> {
     // 1. Listen descriptor: injected by the shell, absent means standalone debugging
     let endpoint: Endpoint = match std::env::var(ENV_ENDPOINT) {
@@ -224,7 +252,12 @@ pub async fn serve_with_config(
             id: Arc::new(manifest.id.clone()),
             version: Arc::new(manifest.version.clone()),
         });
-    let mut app = app.merge(health);
+    let mut app = app
+        .merge(health)
+        // Standard event endpoint: NDJSON push feed (crate::events module
+        // docs = the wire contract); mounted under the same token middleware
+        // as everything else (the layer below covers the merged result).
+        .merge(events_router(events.clone()));
     if let Some(expected) = token {
         app = app.layer(axum::middleware::from_fn_with_state(
             expected,
@@ -271,7 +304,7 @@ pub async fn serve_with_config(
                 .and_then(|addr| addr.as_pathname().map(|p| p.to_string_lossy().into_owned()))
                 .unwrap_or_else(|| path.clone());
             (
-                spawn_serve(listener, app.clone(), shutdown_rx.clone()),
+                spawn_serve(listener, app.clone(), shutdown_rx.clone(), events.clone()),
                 Endpoint::Uds { path: actual },
             )
         }
@@ -287,7 +320,7 @@ pub async fn serve_with_config(
                 source,
             })?;
             (
-                spawn_serve(listener, app, shutdown_rx),
+                spawn_serve(listener, app, shutdown_rx, events.clone()),
                 Endpoint::Tcp { addr: actual },
             )
         }
@@ -306,7 +339,7 @@ pub async fn serve_with_config(
                 source,
             })?;
             (
-                spawn_serve(listener, app, shutdown_rx),
+                spawn_serve(listener, app, shutdown_rx, events.clone()),
                 Endpoint::Tcp { addr: actual },
             )
         }
@@ -320,6 +353,7 @@ pub async fn serve_with_config(
     Ok(ServeInfo {
         endpoint: serve_endpoint,
         shutdown: ShutdownHandle { tx: shutdown_tx },
+        notifier: events,
         join,
     })
 }
@@ -327,11 +361,15 @@ pub async fn serve_with_config(
 /// Starts the accept/serve loop (independent task): generics unify the two Listener kinds;
 /// the author side only gets a JoinHandle.
 /// On receiving a signal the watch channel stops accept and waits for in-flight connections
-/// to finish (graceful exit).
+/// to finish (graceful exit). The graceful future also closes the event plane: without
+/// that, live `/events` streams never end (the notifier outlives shutdown) and the wait
+/// for in-flight connections would never finish — the process would hang until an
+/// external SIGKILL.
 fn spawn_serve<L>(
     listener: L,
     app: Router,
     shutdown_rx: watch::Receiver<bool>,
+    notifier: A2uiNotifier,
 ) -> tokio::task::JoinHandle<std::io::Result<()>>
 where
     L: axum::serve::Listener + Send + 'static,
@@ -344,6 +382,11 @@ where
             .with_graceful_shutdown(async move {
                 let mut rx = shutdown_rx;
                 let _ = rx.changed().await;
+                // Single convergence point of every stop path (SIGTERM /
+                // ShutdownHandle / Windows stdin): ending the event plane
+                // here lets active /events subscribers drain and disconnect,
+                // so in-flight connections finish and graceful exit lands.
+                notifier.close();
             })
             .await
     })

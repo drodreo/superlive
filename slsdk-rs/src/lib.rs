@@ -6,23 +6,32 @@
 //! of docs/architecture.md in the repo.
 //!
 //! Entry point for component authors: [`serve::serve`] handles listening, transport platform
-//! adaptation, token validation, and the health endpoint in one line, so authors only write
+//! adaptation, token validation, the health endpoint, and the standard push feed (`GET
+//! /events`, see the [`events`] module docs) in one line, so authors only write
 //! business handlers; components declaring config fields automatically get the standard config
 //! endpoint (`GET/PUT /config`, see the wire contract in the [`config`] module docs) once
-//! integrated via [`serve::serve_with_config`].
+//! integrated via [`serve::serve_with_config`]; pushing UI updates is one call on
+//! [`events::A2uiNotifier`].
 //! The manifest and fingerprint verification are shared by the shell installation flow and
 //! component packaging scripts.
 
 pub mod config;
 pub mod endpoint;
+pub mod events;
 pub mod manifest;
 pub mod serve;
 
 pub use config::{ConfigError, ConfigIntegration, ConfigStore, OnChangeCallback, config_router};
 pub use endpoint::{ENV_ENDPOINT, ENV_TOKEN, Endpoint, EndpointParseError};
+pub use events::{
+    A2UI_VERSION, A2uiNotifier, CreateSurfaceMessage, DeleteSurfaceMessage, EVENTS_CONTENT_TYPE,
+    ServerToClientMessage, UpdateComponentsMessage, UpdateDataModelMessage,
+};
 pub use manifest::{
     ComponentConfig, ComponentManifest, ConfigField, ConfigFieldType, FileEntry, LaunchConfig,
     ManifestError, MenuDeclaration, RouteDeclaration, TransportCaps, UiDeclaration, UiType,
     VerifyError, strip_verbatim_prefix, verify_files,
 };
-pub use serve::{ServeError, ServeInfo, ShutdownHandle, serve, serve_with_config};
+pub use serve::{
+    ServeError, ServeInfo, ShutdownHandle, serve, serve_with_config, serve_with_events,
+};

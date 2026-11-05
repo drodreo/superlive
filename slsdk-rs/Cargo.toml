@@ -1,6 +1,6 @@
 [package]
 name = "slsdk-rs"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 description = "superlive v2 Plane B contract layer: manifest types, the registration protocol, lifecycle, and the serve() skeleton (protocol reference implementation)"
@@ -23,6 +23,9 @@ cron = "0.12"
 # The dependency surface is an outward promise — extra features would be inherited by the shell and all component server downstreams
 tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "sync", "io-util", "io-std", "fs"] }
 axum = "0.8"
+# Event plane (events.rs): the Stream trait for the /events NDJSON body —
+# traits-only leaf crate, already in the tree via axum; no new code pulled in.
+futures-core = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

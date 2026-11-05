@@ -232,4 +232,78 @@ async fn uds_and_tcp_lifecycle_smoke() {
     // into the test process); the shutdown handle covers the same exit channel
     info.shutdown();
     info.wait().await.unwrap();
+
+    // ===== Scenario 3: shutdown with a live /events subscriber =====
+    // Standalone TCP (the env was cleared for scenario 2). Shutdown must
+    // terminate the stream (client sees EOF) and finish the wait: before the
+    // fix this hung forever — the notifier never dropped, so the stream never
+    // ended and graceful shutdown waited for it eternally.
+    let info = slsdk_rs::serve(Router::new(), &test_manifest())
+        .await
+        .unwrap();
+    let addr = match &info.endpoint {
+        Endpoint::Tcp { addr } => *addr,
+        other => panic!("standalone debug mode should be Tcp, got {other:?}"),
+    };
+    // Open a live subscription over raw TCP: the body never ends on its own
+    // (no replay), so frames must be read incrementally — never collected.
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stream
+        .write_all(b"GET /events HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .await
+        .unwrap();
+    let mut head = Vec::new();
+    let mut chunk = [0u8; 256];
+    loop {
+        let n = stream.read(&mut chunk).await.unwrap();
+        assert!(n > 0, "connection closed before the response head");
+        head.extend_from_slice(&chunk[..n]);
+        if head.windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+    }
+    let head_text = String::from_utf8_lossy(&head);
+    assert!(
+        head_text.starts_with("HTTP/1.1 200"),
+        "the events endpoint should answer 200, head: {head_text}"
+    );
+    assert!(
+        head_text.contains(slsdk_rs::EVENTS_CONTENT_TYPE),
+        "the events endpoint should answer the vendor content type, head: {head_text}"
+    );
+    // The subscription is live: a pushed message reaches this connection.
+    info.notifier
+        .push(slsdk_rs::ServerToClientMessage::delete_surface("s1"));
+    let mut frame = [0u8; 512];
+    let n = tokio::time::timeout(std::time::Duration::from_secs(5), stream.read(&mut frame))
+        .await
+        .expect("the pushed message must reach the subscriber")
+        .unwrap();
+    assert!(n > 0, "the subscriber read zero bytes for a live push");
+    assert!(
+        String::from_utf8_lossy(&frame[..n]).contains("deleteSurface"),
+        "the pushed message should arrive as one NDJSON line"
+    );
+    let started = std::time::Instant::now();
+    info.shutdown();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        // The server terminates the chunked body: EOF on this connection.
+        loop {
+            let n = stream.read(&mut frame).await.unwrap();
+            if n == 0 {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("the server must terminate the /events stream on shutdown");
+    tokio::time::timeout(std::time::Duration::from_secs(5), info.wait())
+        .await
+        .expect("graceful shutdown must finish with an active /events subscriber")
+        .unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "shutdown with a live subscriber took too long: {:?}",
+        started.elapsed()
+    );
 }
