@@ -172,7 +172,7 @@ fn ts_templates_generate_the_ts_server_tree() {
         let package = fs::read_to_string(join_rel(&result.root, "server/package.json")).unwrap();
         assert!(package.contains(r#""name": "demo-comp-server""#));
         assert!(package.contains(r#""private": true"#));
-        assert!(package.contains(r#""slsdk-ts": "^0.2.0""#));
+        assert!(package.contains(r#""slsdk-ts": "^0.3.0""#));
         assert!(package.contains(r#""onlyBuiltDependencies": ["#));
         assert!(package.contains("esbuild"));
     }
@@ -284,7 +284,7 @@ fn ts_server_package_json_follows_the_sdk_dependency_mode() {
     // plane's manifest uses — this plane mirrors it byte for byte.
     let expected = format!(
         r#""slsdk-ts": "file:{}/slsdk-ts""#,
-        superlive_root.display()
+        superlive_root.display().to_string().replace('\\', "/")
     );
     assert!(
         package.contains(&expected),
@@ -700,11 +700,11 @@ fn local_sdk_uses_forward_slash_path_and_file_lines() {
     let package = fs::read_to_string(join_rel(&result.root, "web/package.json")).unwrap();
     let expected_rs = format!(
         "slsdk-rs = {{ path = \"{}\" }}",
-        checkout.join("slsdk-rs").display()
+        checkout.join("slsdk-rs").display().to_string().replace('\\', "/")
     );
     let expected_ts = format!(
         "\"slsdk-ts\": \"file:{}\"",
-        checkout.join("slsdk-ts").display()
+        checkout.join("slsdk-ts").display().to_string().replace('\\', "/")
     );
     assert!(cargo.contains(&expected_rs), "cargo line: {cargo}");
     assert!(package.contains(&expected_ts), "package line: {package}");
