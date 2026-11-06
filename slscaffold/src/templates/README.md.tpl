@@ -25,11 +25,11 @@ A [superlive](https://github.com/drodreo/superlive) component scaffolded by `sls
   skeleton handles listening, token auth and the `/health` endpoint; you only write
   business handlers.
 #@endif
-#@if HAS_WEB
-- **web/** — React frontend (module tier). Builds to a fixed-name `entry.js` whose default
+#@if HAS_UI
+- **ui/** — React frontend (module tier). Builds to a fixed-name `entry.js` whose default
   export is the component root; shared libraries (react / rxjs / i18next) stay external and
   are resolved by the shell's import map at runtime — app-wide singletons. Localized UI
-  strings live in `web/src/i18n.ts` (one bundle per locale): extend your own keys there per
+  strings live in `ui/src/i18n.ts` (one bundle per locale): extend your own keys there per
   locale — a shell language switch applies instantly; the `menuTitle` key of the component
   namespace is reserved for the shell (see the note in that file).
 #@endif
@@ -48,7 +48,7 @@ A [superlive](https://github.com/drodreo/superlive) component scaffolded by `sls
 #@if HAS_SERVER && BACKEND_BUN
 - Bun (https://bun.sh)
 #@endif
-#@if HAS_WEB
+#@if HAS_UI
 - Node.js + pnpm (or npm)
 #@endif
 - The superlive shell (for installation)
@@ -57,29 +57,29 @@ A [superlive](https://github.com/drodreo/superlive) component scaffolded by `sls
 ## Develop
 
 #@endif
-#@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_CARGO
+#@if !IMPORTED && HAS_SERVER && HAS_UI && BACKEND_CARGO
 Terminal 1 — backend (fixed port so the dev proxy can reach it):
 
     SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ cargo run --manifest-path server/Cargo.toml
 
 #@endif
-#@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_DENO
+#@if !IMPORTED && HAS_SERVER && HAS_UI && BACKEND_DENO
 Terminal 1 — backend (first time: `cd server && bun install` — deno needs a
 pre-installed node_modules for file: dependencies; npm works too):
 
     SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ deno run --node-modules-dir=manual --allow-net --allow-read --allow-env server/server.ts
 
 #@endif
-#@if !IMPORTED && HAS_SERVER && HAS_WEB && BACKEND_BUN
+#@if !IMPORTED && HAS_SERVER && HAS_UI && BACKEND_BUN
 Terminal 1 — backend (fixed port so the dev proxy can reach it):
 
     SL_ENDPOINT=tcp:127.0.0.1:__DEV_PORT__ bun run server/server.ts
 
 #@endif
-#@if !IMPORTED && HAS_SERVER && HAS_WEB
+#@if !IMPORTED && HAS_SERVER && HAS_UI
 Terminal 2 — frontend:
 
-    cd web && pnpm install && pnpm dev
+    cd ui && pnpm install && pnpm dev
 
 Open http://localhost:5173 — in standalone mode `main.tsx` fakes the shell injection
 (empty origin) and the vite dev proxy forwards `/api` to the backend, so the full
@@ -89,15 +89,15 @@ UI → API → handler chain works outside the shell.
 > segment stripped; the component always receives its own full paths (`/api/v1/hello`) —
 > identical in both worlds.
 #@endif
-#@if !IMPORTED && HAS_WEB && !HAS_SERVER
-    cd web && pnpm install && pnpm dev
+#@if !IMPORTED && HAS_UI && !HAS_SERVER
+    cd ui && pnpm install && pnpm dev
 
 Open http://localhost:5173 — in standalone mode `main.tsx` fakes the shell injection
 (empty origin), so the UI renders outside the shell. This shape has no backend: the
 vite dev proxy target is a placeholder, and API calls fail unless something else
 serves this component's namespace.
 #@endif
-#@if !IMPORTED && HAS_SERVER && !HAS_WEB && BACKEND_CARGO
+#@if !IMPORTED && HAS_SERVER && !HAS_UI && BACKEND_CARGO
 Run the backend standalone (fixed port; auth is only enforced when launched by the
 shell):
 
@@ -106,7 +106,7 @@ shell):
 Inside the shell, the gateway forwards `/api/__NS__/*` to this backend with the namespace
 segment stripped; the backend always receives its own full paths (`/api/v1/hello`).
 #@endif
-#@if !IMPORTED && HAS_SERVER && !HAS_WEB && BACKEND_DENO
+#@if !IMPORTED && HAS_SERVER && !HAS_UI && BACKEND_DENO
 Run the backend standalone (first time: `cd server && bun install` — deno needs a
 pre-installed node_modules for file: dependencies; npm works too; fixed port,
 auth is only enforced when launched by the shell):
@@ -116,7 +116,7 @@ auth is only enforced when launched by the shell):
 Inside the shell, the gateway forwards `/api/__NS__/*` to this backend with the namespace
 segment stripped; the backend always receives its own full paths (`/api/v1/hello`).
 #@endif
-#@if !IMPORTED && HAS_SERVER && !HAS_WEB && BACKEND_BUN
+#@if !IMPORTED && HAS_SERVER && !HAS_UI && BACKEND_BUN
 Run the backend standalone (fixed port; auth is only enforced when launched by the
 shell):
 
@@ -132,7 +132,7 @@ segment stripped; the backend always receives its own full paths (`/api/v1/hello
 
 (On Windows: `pwsh -File scripts/superlive.build`.)
 
-Builds every plane this project carries — the backend release binary and the web
+Builds every plane this project carries — the backend release binary and the ui
 dist with the fixed-name `entry.js` — and asserts the outputs exist. This script
 is your single build customization point: if your component needs a custom build
 (workspace layout, cross-compilation, private build steps), change it. Release

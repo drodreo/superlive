@@ -1,5 +1,5 @@
 {
-  "name": "__ID__-web",
+  "name": "__ID__-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",

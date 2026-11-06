@@ -38,7 +38,7 @@ pub enum ComponentSource {
 pub struct RegistryEntry {
     pub source: ComponentSource,
     /// Dev component's project directory (launch commands resolve relative
-    /// to it; the static server mounts its `web/dist`). Always `None` for
+    /// to it; the static server mounts its `ui/dist`). Always `None` for
     /// installed entries.
     #[serde(default)]
     pub project_dir: Option<PathBuf>,
@@ -440,7 +440,7 @@ pub fn config_path_for(layout: &DataLayout, entry: &RegistryEntry) -> PathBuf {
 /// root and members inherit it via `version.workspace = true`), falling back
 /// to `[package].version` for single-crate projects. The COMPONENT_VERSION
 /// constant in `server/server.ts` for the TS (deno/bun) server shapes,
-/// `web/package.json` "version" for frontend-only shapes.
+/// `ui/package.json` "version" for frontend-only shapes.
 pub(crate) fn project_version(root: &Path, has_server: bool) -> Result<String, String> {
     if has_server {
         let cargo_toml = root.join("server").join("Cargo.toml");
@@ -478,7 +478,7 @@ pub(crate) fn project_version(root: &Path, has_server: bool) -> Result<String, S
                 )
             })
     } else {
-        let package_json = root.join("web").join("package.json");
+        let package_json = root.join("ui").join("package.json");
         let text = std::fs::read_to_string(&package_json)
             .map_err(|e| format!("failed to read {}: {e}", package_json.display()))?;
         serde_json::from_str::<serde_json::Value>(&text)

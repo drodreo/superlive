@@ -4,7 +4,7 @@
 //! Two-phase contract:
 //!
 //! 1. **Inspect** (no disk mutation): manifest present and parsing, declaration
-//!    validation, shape detection (server/ and web/ directories), the
+//!    validation, shape detection (server/ and ui/ directories), the
 //!    version-compatibility gate, and an upgrade scan. Findings split into
 //!    *unfixable* (contract violations — the reason list is the rejection) and
 //!    *upgrades* (the conservative gap-filling list: manifest-level corrections
@@ -119,17 +119,17 @@ fn inspect(root: &Path) -> Result<Inspection, CreateError> {
     })?;
     let mut manifest_modified = false;
 
-    // -- shape detection (server/ and web/ directories) --
+    // -- shape detection (server/ and ui/ directories) --
     let has_server = root.join("server").is_dir();
-    let has_web = root.join("web").is_dir();
-    if !has_server && !has_web {
+    let has_ui = root.join("ui").is_dir();
+    if !has_server && !has_ui {
         unfixable.push(
-            "neither a server/ nor a web/ directory exists — no recognizable component shape"
+            "neither a server/ nor a ui/ directory exists — no recognizable component shape"
                 .to_string(),
         );
     }
     // The declaration and the detected shape must agree: a launch without a
-    // server/ (or a ui without a web/) can never start or mount; a directory
+    // server/ (or a ui without a ui/) can never start or mount; a directory
     // contradicting the declaration is the project disagreeing with itself.
     if manifest.launch.is_some() && !has_server {
         unfixable.push(
@@ -142,16 +142,16 @@ fn inspect(root: &Path) -> Result<Inspection, CreateError> {
                 .to_string(),
         );
     }
-    if manifest.ui.is_some() && !has_web {
-        unfixable.push("the manifest declares a UI but no web/ directory exists".to_string());
+    if manifest.ui.is_some() && !has_ui {
+        unfixable.push("the manifest declares a UI but no ui/ directory exists".to_string());
     }
-    if manifest.ui.is_none() && has_web {
+    if manifest.ui.is_none() && has_ui {
         unfixable.push(
-            "a web/ directory exists but the manifest declares no ui — nothing would mount"
+            "a ui/ directory exists but the manifest declares no ui — nothing would mount"
                 .to_string(),
         );
     }
-    let shape = match (has_server, has_web) {
+    let shape = match (has_server, has_ui) {
         (true, true) => slscaffold::ComponentShape::FrontendAndBackend,
         (false, true) => slscaffold::ComponentShape::FrontendOnly,
         (true, false) => slscaffold::ComponentShape::BackendOnly,
@@ -539,12 +539,7 @@ mod tests {
 
     /// Assembles a project directory: the manifest plus the shape directories
     /// and version sources the shape implies.
-    fn make_project(
-        root: &Path,
-        manifest_json: &str,
-        with_server: bool,
-        with_web: bool,
-    ) -> PathBuf {
+    fn make_project(root: &Path, manifest_json: &str, with_server: bool, with_ui: bool) -> PathBuf {
         std::fs::create_dir_all(root).unwrap();
         std::fs::write(root.join("manifest.json"), manifest_json).unwrap();
         if with_server {
@@ -555,10 +550,10 @@ mod tests {
             )
             .unwrap();
         }
-        if with_web {
-            std::fs::create_dir_all(root.join("web/src")).unwrap();
+        if with_ui {
+            std::fs::create_dir_all(root.join("ui/src")).unwrap();
             std::fs::write(
-                root.join("web/package.json"),
+                root.join("ui/package.json"),
                 r#"{ "name": "x", "version": "0.2.0" }"#,
             )
             .unwrap();
@@ -779,7 +774,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState::new(dir.path().join("data")).unwrap();
         let project = dir.path().join("proj");
-        std::fs::create_dir_all(project.join("web")).unwrap();
+        std::fs::create_dir_all(project.join("ui")).unwrap();
         std::fs::write(project.join("manifest.json"), "{ not json").unwrap();
 
         let err = import_core(&state, &project.to_string_lossy(), false)

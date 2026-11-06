@@ -761,10 +761,10 @@ pub(crate) async fn create_component_core(
     // "Creation flow": the author may edit it afterwards; reload picks the
     // changes up; the version is a display value refreshed from the project's
     // version source). Shape mapping identical to the packaging chain's
-    // manifest generation (ui/menu/routes for web shapes, launch for server
-    // shapes; entry is relative to the dev static root web/dist). No files
+    // manifest generation (ui/menu/routes for ui shapes, launch for server
+    // shapes; entry is relative to the dev static root ui/dist). No files
     // list — fingerprints are a publish-time package concept.
-    let has_web = matches!(
+    let has_ui = matches!(
         shape,
         slscaffold::ComponentShape::FrontendAndBackend | slscaffold::ComponentShape::FrontendOnly
     );
@@ -797,16 +797,16 @@ pub(crate) async fn create_component_core(
         // chain's install-time gate stays the authority for packages
         min_shell_version: env!("CARGO_PKG_VERSION").to_string(),
         namespace: args.namespace.clone(),
-        ui: has_web.then(|| UiDeclaration {
+        ui: has_ui.then(|| UiDeclaration {
             ui_type: slsdk_rs::UiType::Module,
             entry: "entry.js".to_string(),
         }),
-        menu: has_web.then(|| MenuDeclaration {
+        menu: has_ui.then(|| MenuDeclaration {
             title: display_name.clone(),
             icon_path: None,
             titles: titles.clone(),
         }),
-        routes: if has_web {
+        routes: if has_ui {
             vec![RouteDeclaration {
                 path: "/".to_string(),
                 title: display_name.clone(),
@@ -910,7 +910,7 @@ pub async fn import_component(
 
 /// The blocking half of creation: scaffold the project, then read back the
 /// project version from the project's version source (same source as the
-/// packaging chain: server/Cargo.toml for server shapes, web/package.json for
+/// packaging chain: server/Cargo.toml for server shapes, ui/package.json for
 /// frontend-only). The declaration file itself is written by the async side
 /// (it assembles the pure declaration from the user input + this version).
 fn scaffold_and_read_version(
@@ -1028,7 +1028,7 @@ mod tests {
         .unwrap();
         // Project landed on disk + the registration view
         assert!(target.join("server/Cargo.toml").is_file());
-        assert!(target.join("web/src/main.tsx").is_file());
+        assert!(target.join("ui/src/main.tsx").is_file());
         // slscaffold canonicalizes the target (absolutize) and strips the
         // Windows verbatim prefix; canonicalize() here yields the verbatim
         // long-path form while the tempdir path may carry the 8.3 short name —
@@ -1097,7 +1097,7 @@ mod tests {
             .manifest;
         assert!(m.launch.is_none(), "frontend-only must not carry a launch");
         assert!(m.ui.is_some());
-        // Same version source as the packaging chain's frontend-only shape (web/package.json)
+        // Same version source as the packaging chain's frontend-only shape (ui/package.json)
         assert_eq!(m.version, "0.1.0");
     }
 
@@ -1230,7 +1230,7 @@ mod tests {
 
         // The generated i18n module received every configured locale row
         // (one registration line per locale, verbatim)
-        let i18n = std::fs::read_to_string(target.join("web/src/i18n.ts")).unwrap();
+        let i18n = std::fs::read_to_string(target.join("ui/src/i18n.ts")).unwrap();
         assert!(
             i18n.contains("en: { title: 'Local Component' },"),
             "en title row missing: {i18n}"
@@ -1417,8 +1417,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState::new(dir.path().join("data")).unwrap();
         let project = dir.path().join("proj");
-        std::fs::create_dir_all(project.join("web/dist")).unwrap();
-        std::fs::write(project.join("web/dist/entry.js"), b"x").unwrap();
+        std::fs::create_dir_all(project.join("ui/dist")).unwrap();
+        std::fs::write(project.join("ui/dist/entry.js"), b"x").unwrap();
         write_envelope(&state, &dev_entry("devapp", "devns", &project));
         config_plane::save_meta(
             &state.layout,
@@ -1434,7 +1434,7 @@ mod tests {
         uninstall_core(&state, "devapp").await.unwrap();
 
         // The project directory stays untouched (unregister ≠ delete the code)
-        assert!(project.join("web/dist/entry.js").is_file());
+        assert!(project.join("ui/dist/entry.js").is_file());
         // Registration and meta removed
         assert!(
             registry::load_entry(&state.layout, "devapp")

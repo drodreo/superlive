@@ -135,19 +135,19 @@ mod tests {
     use super::*;
 
     fn conds() -> Vec<(&'static str, bool)> {
-        vec![("HAS_SERVER", true), ("HAS_WEB", false)]
+        vec![("HAS_SERVER", true), ("HAS_UI", false)]
     }
 
     #[test]
     fn keeps_true_branch_and_drops_false_branch_with_markers() {
-        let tpl = "a\n#@if HAS_SERVER\nb\n#@endif\n#@if HAS_WEB\nc\n#@endif\nd\n";
+        let tpl = "a\n#@if HAS_SERVER\nb\n#@endif\n#@if HAS_UI\nc\n#@endif\nd\n";
         let out = render(tpl, &[], &conds()).unwrap();
         assert_eq!(out, "a\nb\nd\n");
     }
 
     #[test]
     fn negation_and_conjunction_terms() {
-        let tpl = "#@if !HAS_WEB\nx\n#@endif\n#@if HAS_SERVER && !HAS_WEB\ny\n#@endif\n#@if HAS_SERVER && HAS_WEB\nz\n#@endif\n";
+        let tpl = "#@if !HAS_UI\nx\n#@endif\n#@if HAS_SERVER && !HAS_UI\ny\n#@endif\n#@if HAS_SERVER && HAS_UI\nz\n#@endif\n";
         let out = render(tpl, &[], &conds()).unwrap();
         assert_eq!(out, "x\ny\n");
     }
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn nested_block_is_a_template_error() {
         let err = strip_conditionals(
-            "#@if HAS_SERVER\n#@if HAS_WEB\nx\n#@endif\n#@endif\n",
+            "#@if HAS_SERVER\n#@if HAS_UI\nx\n#@endif\n#@endif\n",
             &conds(),
         )
         .unwrap_err();

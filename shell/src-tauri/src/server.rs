@@ -131,7 +131,7 @@ async fn cors_middleware(req: Request, next: Next) -> Response {
 
 /// `GET /comps/{id}/{rel}`: component UI static files.
 /// Data source by registry record: an installed entry maps to
-/// `components/{id}/ui/{rel}`; a dev entry maps to `{project_dir}/web/dist/{rel}`
+/// `components/{id}/ui/{rel}`; a dev entry maps to `{project_dir}/ui/dist/{rel}`
 /// (the built output of the project — absent until the first build, which
 /// surfaces as 404). Only the static root is exposed; binaries/resources and
 /// the rest of the project tree never enter the URL space.
@@ -165,7 +165,7 @@ async fn comps_static(
 }
 
 /// The static root for one component's `/comps/{id}` space: dev entries
-/// serve the project's `web/dist` (reload-is-upgrade: the read follows the
+/// serve the project's `ui/dist` (reload-is-upgrade: the read follows the
 /// on-disk envelope, so a rebuilt project is picked up without
 /// re-registration); installed entries — and any fallback (no record /
 /// corrupt record / envelope without a project dir) — serve the install
@@ -174,7 +174,7 @@ async fn static_base(state: &AppState, id: &str) -> std::path::PathBuf {
     match crate::registry::load_entry(&state.layout, id).await {
         Ok(Some(entry)) if entry.source == crate::registry::ComponentSource::Dev => entry
             .project_dir
-            .map(|dir| dir.join("web").join("dist"))
+            .map(|dir| dir.join("ui").join("dist"))
             .unwrap_or_else(|| state.layout.component_dir(id).join("ui")),
         _ => state.layout.component_dir(id).join("ui"),
     }
@@ -481,8 +481,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = Arc::new(AppState::new(dir.path().join("data")).unwrap());
         let project = dir.path().join("proj");
-        std::fs::create_dir_all(project.join("web/dist")).unwrap();
-        std::fs::write(project.join("web/dist/entry.js"), b"export default 1;").unwrap();
+        std::fs::create_dir_all(project.join("ui/dist")).unwrap();
+        std::fs::write(project.join("ui/dist/entry.js"), b"export default 1;").unwrap();
         // The rest of the project tree (sources/manifest) never enters the URL space
         std::fs::write(project.join("secret.txt"), b"private").unwrap();
         write_dev_entry(&state, "devapp", "devns", &project);
@@ -498,7 +498,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(body_bytes(res).await, b"export default 1;");
 
-        // Files outside the static root are unreachable (only web/dist is exposed)
+        // Files outside the static root are unreachable (only ui/dist is exposed)
         let req = Request::builder()
             .uri("/comps/devapp/secret.txt")
             .body(Body::empty())
@@ -506,7 +506,7 @@ mod tests {
         let res = router.clone().oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
 
-        // Not built yet (web/dist absent) → 404 (a normal state)
+        // Not built yet (ui/dist absent) → 404 (a normal state)
         let empty_project = dir.path().join("empty");
         std::fs::create_dir_all(&empty_project).unwrap();
         write_dev_entry(&state, "novbuild", "novns", &empty_project);

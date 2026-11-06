@@ -10,7 +10,7 @@
 # change this script.
 #
 # Form adaptation: the build sections below check the directory layout at
-# runtime - a server/ directory triggers the backend build, a web/ directory
+# runtime - a server/ directory triggers the backend build, a ui/ directory
 # triggers the frontend build.
 
 [CmdletBinding()]
@@ -29,16 +29,16 @@ function Test-Command([string]$name) {
 }
 
 $HasServerDir = $false
-$HasWebDir = $false
+$HasUiDir = $false
 #@if HAS_SERVER
 if (Test-Path (Join-Path $Root 'server')) { $HasServerDir = $true }
 #@endif
-#@if HAS_WEB
-if (Test-Path (Join-Path $Root 'web')) { $HasWebDir = $true }
+#@if HAS_UI
+if (Test-Path (Join-Path $Root 'ui')) { $HasUiDir = $true }
 #@endif
 
-if (-not $HasServerDir -and -not $HasWebDir) {
-    Die "nothing to build: neither server/ nor web/ exists under $Root"
+if (-not $HasServerDir -and -not $HasUiDir) {
+    Die "nothing to build: neither server/ nor ui/ exists under $Root"
 }
 
 #@if HAS_SERVER && BACKEND_CARGO
@@ -101,21 +101,21 @@ if ($HasServerDir) {
 }
 #@endif
 
-#@if HAS_WEB
-if ($HasWebDir) {
+#@if HAS_UI
+if ($HasUiDir) {
     # pnpm when available, npm otherwise
     $PM = if (Test-Command 'pnpm') { 'pnpm' } elseif (Test-Command 'npm') { 'npm' } else { $null }
     if (-not $PM) { Die 'missing required command: pnpm (or npm)' }
-    Log "building web: $PM run build (output web/dist)"
-    Push-Location (Join-Path $Root 'web')
+    Log "building ui: $PM run build (output ui/dist)"
+    Push-Location (Join-Path $Root 'ui')
     try { & $PM run build }
     finally { Pop-Location }
-    if ($LASTEXITCODE -ne 0) { Die 'web build failed' }
-    # Component build-shape contract (web/vite.config.js): the entry is the fixed
+    if ($LASTEXITCODE -ne 0) { Die 'ui build failed' }
+    # Component build-shape contract (ui/vite.config.js): the entry is the fixed
     # name entry.js (single rollup input src/entry.tsx + entryFileNames 'entry.js');
     # index.html never enters the build output.
-    $WebEntry = Join-Path $Root 'web/dist/entry.js'
-    if (-not (Test-Path $WebEntry)) { Die 'incomplete web build output: web/dist/entry.js does not exist' }
+    $UiEntry = Join-Path $Root 'ui/dist/entry.js'
+    if (-not (Test-Path $UiEntry)) { Die 'incomplete ui build output: ui/dist/entry.js does not exist' }
 }
 #@endif
 

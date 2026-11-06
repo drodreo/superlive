@@ -10,7 +10,7 @@
 # change this script.
 #
 # Form adaptation: the build sections below check the directory layout at
-# runtime — a server/ directory triggers the backend build, a web/ directory
+# runtime — a server/ directory triggers the backend build, a ui/ directory
 # triggers the frontend build.
 #
 # Requires:
@@ -24,8 +24,8 @@
 #@if HAS_SERVER && BACKEND_BUN
 #   (server build) bun (https://bun.sh)
 #@endif
-#@if HAS_WEB
-#   (web build) pnpm (or npm)
+#@if HAS_UI
+#   (ui build) pnpm (or npm)
 #@endif
 
 set -euo pipefail
@@ -37,16 +37,16 @@ log() { echo "==> $*"; }
 die() { echo "error: $*" >&2; exit 1; }
 
 HAS_SERVER_DIR=0
-HAS_WEB_DIR=0
+HAS_UI_DIR=0
 #@if HAS_SERVER
 if [ -d "$ROOT/server" ]; then HAS_SERVER_DIR=1; fi
 #@endif
-#@if HAS_WEB
-if [ -d "$ROOT/web" ]; then HAS_WEB_DIR=1; fi
+#@if HAS_UI
+if [ -d "$ROOT/ui" ]; then HAS_UI_DIR=1; fi
 #@endif
 
-if [ "$HAS_SERVER_DIR" -eq 0 ] && [ "$HAS_WEB_DIR" -eq 0 ]; then
-  die "nothing to build: neither server/ nor web/ exists under $ROOT"
+if [ "$HAS_SERVER_DIR" -eq 0 ] && [ "$HAS_UI_DIR" -eq 0 ]; then
+  die "nothing to build: neither server/ nor ui/ exists under $ROOT"
 fi
 
 #@if HAS_SERVER && BACKEND_CARGO
@@ -92,17 +92,17 @@ if [ "$HAS_SERVER_DIR" -eq 1 ]; then
 fi
 #@endif
 
-#@if HAS_WEB
-if [ "$HAS_WEB_DIR" -eq 1 ]; then
+#@if HAS_UI
+if [ "$HAS_UI_DIR" -eq 1 ]; then
   # pnpm when available, npm otherwise
   PM="$(command -v pnpm >/dev/null 2>&1 && echo pnpm || echo npm)"
   command -v "$PM" >/dev/null 2>&1 || die "missing required command: pnpm (or npm)"
-  log "building web: $PM run build (output web/dist)"
-  (cd "$ROOT/web" && "$PM" run build)
-  # Component build-shape contract (web/vite.config.js): the entry is the fixed
+  log "building ui: $PM run build (output ui/dist)"
+  (cd "$ROOT/ui" && "$PM" run build)
+  # Component build-shape contract (ui/vite.config.js): the entry is the fixed
   # name entry.js (single rollup input src/entry.tsx + entryFileNames 'entry.js');
   # index.html never enters the build output.
-  [ -f "$ROOT/web/dist/entry.js" ] || die "incomplete web build output: web/dist/entry.js does not exist"
+  [ -f "$ROOT/ui/dist/entry.js" ] || die "incomplete ui build output: ui/dist/entry.js does not exist"
 fi
 #@endif
 

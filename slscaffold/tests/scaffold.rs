@@ -111,20 +111,20 @@ fn frontend_and_backend_generates_the_full_tree() {
         "README.md",
         "server/Cargo.toml",
         "server/src/main.rs",
-        "web/package.json",
-        "web/tsconfig.json",
-        "web/vite.config.js",
-        "web/index.html",
-        "web/src/main.tsx",
-        "web/src/entry.tsx",
-        "web/src/App.tsx",
-        "web/src/i18n.ts",
+        "ui/package.json",
+        "ui/tsconfig.json",
+        "ui/vite.config.js",
+        "ui/index.html",
+        "ui/src/main.tsx",
+        "ui/src/entry.tsx",
+        "ui/src/App.tsx",
+        "ui/src/i18n.ts",
         "scripts/superlive.build",
     ] {
         assert!(has_file(&result.created, expected), "missing {expected}");
     }
     assert!(join_rel(&result.root, "server/Cargo.toml").is_file());
-    assert!(join_rel(&result.root, "web/src/App.tsx").is_file());
+    assert!(join_rel(&result.root, "ui/src/App.tsx").is_file());
 }
 
 #[test]
@@ -134,16 +134,16 @@ fn frontend_only_omits_the_server_plane() {
     assert_eq!(result.created.len(), 10);
     assert!(!has_file(&result.created, "server/"));
     assert!(!result.root.join("server").exists());
-    assert!(join_rel(&result.root, "web/src/App.tsx").is_file());
+    assert!(join_rel(&result.root, "ui/src/App.tsx").is_file());
 }
 
 #[test]
-fn backend_only_omits_the_web_plane() {
+fn backend_only_omits_the_ui_plane() {
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::BackendOnly);
     assert_eq!(result.created.len(), 4);
-    assert!(!has_file(&result.created, "web/"));
-    assert!(!result.root.join("web").exists());
+    assert!(!has_file(&result.created, "ui/"));
+    assert!(!result.root.join("ui").exists());
     assert!(join_rel(&result.root, "server/src/main.rs").is_file());
 }
 
@@ -163,11 +163,11 @@ fn ts_templates_generate_the_ts_server_tree() {
         assert!(has_file(&result.created, "server/package.json"));
         assert!(!has_file(&result.created, "server/Cargo.toml"));
         assert!(!has_file(&result.created, "server/src/main.rs"));
-        // The web plane is untouched by the backend template.
-        assert!(join_rel(&result.root, "web/src/App.tsx").is_file());
+        // The ui plane is untouched by the backend template.
+        assert!(join_rel(&result.root, "ui/src/App.tsx").is_file());
 
         // The dependency root resolves slsdk-ts through the same two modes as
-        // the web plane's manifest, and carries the pnpm build allowlist so a
+        // the ui plane's manifest, and carries the pnpm build allowlist so a
         // fresh `pnpm install` does not die on esbuild's postinstall gate.
         let package = fs::read_to_string(join_rel(&result.root, "server/package.json")).unwrap();
         assert!(package.contains(r#""name": "demo-comp-server""#));
@@ -265,7 +265,7 @@ fn readme_documents_the_runtime_per_template() {
 #[test]
 fn ts_server_package_json_follows_the_sdk_dependency_mode() {
     // dev-path mode: the dependency points at the local checkout, the same
-    // rendering the web plane's manifest gets from the shared placeholder.
+    // rendering the ui plane's manifest gets from the shared placeholder.
     let dir = TempDir::new().unwrap();
     let target = dir.path().join("proj");
     let superlive_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -280,7 +280,7 @@ fn ts_server_package_json_follows_the_sdk_dependency_mode() {
     };
     let result = slscaffold::scaffold(&request).expect("local-mode scaffold must succeed");
     let package = fs::read_to_string(join_rel(&result.root, "server/package.json")).unwrap();
-    // The `file:{path}` (single-slash) form is the existing rendering the web
+    // The `file:{path}` (single-slash) form is the existing rendering the ui
     // plane's manifest uses — this plane mirrors it byte for byte.
     let expected = format!(
         r#""slsdk-ts": "file:{}/slsdk-ts""#,
@@ -391,14 +391,14 @@ fn app_sample_api_chain_follows_the_shape() {
     // request would just render a guaranteed error.
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
-    let app = fs::read_to_string(join_rel(&result.root, "web/src/App.tsx")).unwrap();
+    let app = fs::read_to_string(join_rel(&result.root, "ui/src/App.tsx")).unwrap();
     assert!(app.contains("createClient"));
     assert!(app.contains("/api/v1/hello"));
     assert!(app.contains("NAMESPACE_PREFIX"));
 
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendOnly);
-    let app = fs::read_to_string(join_rel(&result.root, "web/src/App.tsx")).unwrap();
+    let app = fs::read_to_string(join_rel(&result.root, "ui/src/App.tsx")).unwrap();
     assert!(!app.contains("createClient"));
     assert!(!app.contains("/api/v1/hello"));
     assert!(!app.contains("NAMESPACE_PREFIX"));
@@ -427,7 +427,7 @@ fn generated_files_have_zero_placeholder_residue_in_all_shapes() {
             }
             // window.__SL_SHELL__ is legitimate runtime code (the shell-injection
             // global), not a placeholder — it must survive substitution untouched.
-            // main.tsx fakes the injection in every web shape; App.tsx references
+            // main.tsx fakes the injection in every ui shape; App.tsx references
             // the global directly only in the server shapes (the frontend-only
             // sample has no API call and thus no direct reference).
             if rel.ends_with("main.tsx") {
@@ -446,17 +446,17 @@ fn generated_files_have_zero_placeholder_residue_in_all_shapes() {
     }
 }
 
-// ---- web i18n module ----
+// ---- ui i18n module ----
 
 #[test]
-fn web_i18n_registers_every_configured_locale_row_and_the_namespace_note() {
+fn ui_i18n_registers_every_configured_locale_row_and_the_namespace_note() {
     // The generated i18n module carries one registration line per configured
     // locale (input order, values verbatim with single quotes escaped) and
     // states the shell-managed `menuTitle` constraint (visible to the author
     // and to any AI assistant working on the generated project)
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
-    let i18n = fs::read_to_string(join_rel(&result.root, "web/src/i18n.ts")).unwrap();
+    let i18n = fs::read_to_string(join_rel(&result.root, "ui/src/i18n.ts")).unwrap();
     assert!(
         i18n.contains("zh: { title: '演示组件' },"),
         "zh title row missing: {i18n}"
@@ -479,14 +479,14 @@ fn web_i18n_registers_every_configured_locale_row_and_the_namespace_note() {
     );
     assert!(i18n.contains("menuTitle"), "constraint note missing");
 
-    // Backend-only has no web plane, so no i18n module at all (tree shape unchanged)
+    // Backend-only has no ui plane, so no i18n module at all (tree shape unchanged)
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::BackendOnly);
-    assert!(!has_file(&result.created, "web/src/i18n.ts"));
+    assert!(!has_file(&result.created, "ui/src/i18n.ts"));
 }
 
 #[test]
-fn web_i18n_emits_a_single_row_for_a_single_locale() {
+fn ui_i18n_emits_a_single_row_for_a_single_locale() {
     let dir = TempDir::new().unwrap();
     let target = dir.path().join("proj");
     let mut req = request(target, ComponentShape::FrontendOnly);
@@ -495,7 +495,7 @@ fn web_i18n_emits_a_single_row_for_a_single_locale() {
         value: "只有中文".to_string(),
     }];
     slscaffold::scaffold(&req).expect("scaffold must succeed");
-    let i18n = fs::read_to_string(req.target_dir.join("web/src/i18n.ts")).unwrap();
+    let i18n = fs::read_to_string(req.target_dir.join("ui/src/i18n.ts")).unwrap();
     assert!(
         i18n.contains("zh: { title: '只有中文' },"),
         "zh title row missing: {i18n}"
@@ -617,12 +617,12 @@ fn build_script_is_the_bash_dialect_and_follows_the_shape() {
         );
     }
 
-    // FrontendOnly: no server plane anywhere, web build intact.
+    // FrontendOnly: no server plane anywhere, ui build intact.
     assert!(!frontend.contains("cargo"));
     assert!(frontend.contains("\"$PM\" run build"));
-    assert!(frontend.contains("web/dist/entry.js"));
+    assert!(frontend.contains("ui/dist/entry.js"));
 
-    // BackendOnly: no web plane anywhere, server build intact.
+    // BackendOnly: no ui plane anywhere, server build intact.
     assert!(!backend.contains("\"$PM\" run build"));
     assert!(!backend.contains("pnpm"));
     assert!(backend.contains("cargo build --release"));
@@ -630,9 +630,9 @@ fn build_script_is_the_bash_dialect_and_follows_the_shape() {
 
     // FrontendAndBackend: both planes with runtime directory gates.
     assert!(full.contains("if [ -d \"$ROOT/server\" ]"));
-    assert!(full.contains("if [ -d \"$ROOT/web\" ]"));
+    assert!(full.contains("if [ -d \"$ROOT/ui\" ]"));
     assert!(full.contains("target/release/demo-comp-server"));
-    assert!(full.contains("web/dist/entry.js"));
+    assert!(full.contains("ui/dist/entry.js"));
 
     // Packaging semantics moved into the shell — anti-residue guard over
     // code-level markers (the header prose may describe the shell's duties).
@@ -676,7 +676,7 @@ fn registry_dependencies_use_version_specs() {
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
     let cargo = fs::read_to_string(join_rel(&result.root, "server/Cargo.toml")).unwrap();
-    let package = fs::read_to_string(join_rel(&result.root, "web/package.json")).unwrap();
+    let package = fs::read_to_string(join_rel(&result.root, "ui/package.json")).unwrap();
     assert!(cargo.contains("slsdk-rs = \"0.3\""));
     assert!(package.contains("\"slsdk-ts\": \"^0.3.0\""));
 }
@@ -697,7 +697,7 @@ fn local_sdk_uses_forward_slash_path_and_file_lines() {
     let result = slscaffold::scaffold(&req).expect("local sdk scaffold must succeed");
 
     let cargo = fs::read_to_string(join_rel(&result.root, "server/Cargo.toml")).unwrap();
-    let package = fs::read_to_string(join_rel(&result.root, "web/package.json")).unwrap();
+    let package = fs::read_to_string(join_rel(&result.root, "ui/package.json")).unwrap();
     let expected_rs = format!(
         "slsdk-rs = {{ path = \"{}\" }}",
         checkout

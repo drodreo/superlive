@@ -1,11 +1,11 @@
 //! superlive component project scaffolding.
 //!
-//! Renders the standard component skeleton (Rust backend / React web / build
+//! Renders the standard component skeleton (Rust backend / React ui / build
 //! script / README) from templates embedded at compile time, in three shapes:
 //!
-//! - [`ComponentShape::FrontendAndBackend`] — server + web + build script + README
-//! - [`ComponentShape::FrontendOnly`] — web + build script + README (no server/)
-//! - [`ComponentShape::BackendOnly`] — server + build script + README (no web/)
+//! - [`ComponentShape::FrontendAndBackend`] — server + ui + build script + README
+//! - [`ComponentShape::FrontendOnly`] — ui + build script + README (no server/)
+//! - [`ComponentShape::BackendOnly`] — server + build script + README (no ui/)
 //!
 //! The generated project directory is a plain filesystem tree: the dev manifest
 //! assembly and the shell-side registration are the caller's responsibility (the
@@ -42,16 +42,16 @@ mod templates {
     /// Dependency root for the TS server plane: `deno`/`bun` resolve
     /// `slsdk-ts` through the nearest `package.json` ancestor chain of
     /// `server/server.ts`, so the plane carries its own root (same
-    /// `__SLSDK_TS_LINE__` rendering as the web plane's manifest).
+    /// `__SLSDK_TS_LINE__` rendering as the ui plane's manifest).
     pub const SERVER_PACKAGE_JSON: &str = include_str!("templates/server_package_json.tpl");
-    pub const WEB_PACKAGE_JSON: &str = include_str!("templates/web_package.json.tpl");
-    pub const WEB_TSCONFIG_JSON: &str = include_str!("templates/web_tsconfig.json.tpl");
-    pub const WEB_VITE_CONFIG_JS: &str = include_str!("templates/web_vite.config.js.tpl");
-    pub const WEB_INDEX_HTML: &str = include_str!("templates/web_index.html.tpl");
-    pub const WEB_MAIN_TSX: &str = include_str!("templates/web_main.tsx.tpl");
-    pub const WEB_ENTRY_TSX: &str = include_str!("templates/web_entry.tsx.tpl");
-    pub const WEB_APP_TSX: &str = include_str!("templates/web_App.tsx.tpl");
-    pub const WEB_I18N_TS: &str = include_str!("templates/web_i18n.ts.tpl");
+    pub const UI_PACKAGE_JSON: &str = include_str!("templates/ui_package.json.tpl");
+    pub const UI_TSCONFIG_JSON: &str = include_str!("templates/ui_tsconfig.json.tpl");
+    pub const UI_VITE_CONFIG_JS: &str = include_str!("templates/ui_vite.config.js.tpl");
+    pub const UI_INDEX_HTML: &str = include_str!("templates/ui_index.html.tpl");
+    pub const UI_MAIN_TSX: &str = include_str!("templates/ui_main.tsx.tpl");
+    pub const UI_ENTRY_TSX: &str = include_str!("templates/ui_entry.tsx.tpl");
+    pub const UI_APP_TSX: &str = include_str!("templates/ui_App.tsx.tpl");
+    pub const UI_I18N_TS: &str = include_str!("templates/ui_i18n.ts.tpl");
     /// Build-script dialect for POSIX hosts. `file_plan` selects the host
     /// platform's dialect into the single `scripts/superlive.build` output, so
     /// the dialect of the *other* platform stays unreferenced on any given
@@ -290,50 +290,50 @@ fn file_plan(shape: ComponentShape, template: BackendTemplate) -> Vec<FilePlan> 
         ComponentShape::FrontendAndBackend | ComponentShape::FrontendOnly
     ) {
         plan.push(FilePlan {
-            template: templates::WEB_PACKAGE_JSON,
-            rel_path: "web/package.json",
+            template: templates::UI_PACKAGE_JSON,
+            rel_path: "ui/package.json",
             conditional: false,
             exec_bit: false,
         });
         plan.push(FilePlan {
-            template: templates::WEB_TSCONFIG_JSON,
-            rel_path: "web/tsconfig.json",
+            template: templates::UI_TSCONFIG_JSON,
+            rel_path: "ui/tsconfig.json",
             conditional: false,
             exec_bit: false,
         });
         plan.push(FilePlan {
-            template: templates::WEB_VITE_CONFIG_JS,
-            rel_path: "web/vite.config.js",
+            template: templates::UI_VITE_CONFIG_JS,
+            rel_path: "ui/vite.config.js",
             conditional: false,
             exec_bit: false,
         });
         plan.push(FilePlan {
-            template: templates::WEB_INDEX_HTML,
-            rel_path: "web/index.html",
+            template: templates::UI_INDEX_HTML,
+            rel_path: "ui/index.html",
             conditional: false,
             exec_bit: false,
         });
         plan.push(FilePlan {
-            template: templates::WEB_MAIN_TSX,
-            rel_path: "web/src/main.tsx",
+            template: templates::UI_MAIN_TSX,
+            rel_path: "ui/src/main.tsx",
             conditional: false,
             exec_bit: false,
         });
         plan.push(FilePlan {
-            template: templates::WEB_ENTRY_TSX,
-            rel_path: "web/src/entry.tsx",
+            template: templates::UI_ENTRY_TSX,
+            rel_path: "ui/src/entry.tsx",
             conditional: false,
             exec_bit: false,
         });
         plan.push(FilePlan {
-            template: templates::WEB_APP_TSX,
-            rel_path: "web/src/App.tsx",
+            template: templates::UI_APP_TSX,
+            rel_path: "ui/src/App.tsx",
             conditional: true,
             exec_bit: false,
         });
         plan.push(FilePlan {
-            template: templates::WEB_I18N_TS,
-            rel_path: "web/src/i18n.ts",
+            template: templates::UI_I18N_TS,
+            rel_path: "ui/src/i18n.ts",
             conditional: false,
             exec_bit: false,
         });
@@ -464,13 +464,13 @@ fn render_plan(
         req.shape,
         ComponentShape::FrontendAndBackend | ComponentShape::BackendOnly
     );
-    let has_web = matches!(
+    let has_ui = matches!(
         req.shape,
         ComponentShape::FrontendAndBackend | ComponentShape::FrontendOnly
     );
     let conds: [(&str, bool); 6] = [
         ("HAS_SERVER", has_server),
-        ("HAS_WEB", has_web),
+        ("HAS_UI", has_ui),
         // Fresh creation always renders the non-imported README branch
         ("IMPORTED", false),
         ("BACKEND_CARGO", req.template == BackendTemplate::Cargo),
@@ -568,7 +568,7 @@ fn next_steps(req: &ScaffoldRequest, root: &Path) -> Vec<String> {
         }
     };
     let frontend =
-        format!("frontend: cd {root}/web && pnpm install && pnpm dev   → http://localhost:5173");
+        format!("frontend: cd {root}/ui && pnpm install && pnpm dev   → http://localhost:5173");
     // Deno's file: dependencies need a pre-installed node_modules (bun/npm) —
     // the one-time setup line precedes the backend dev line whenever the
     // server plane exists.
@@ -700,7 +700,7 @@ pub struct MissingFilesRequest {
     /// Namespace (README structure sections only; the imported README
     /// carries no dev-recipe section).
     pub namespace: String,
-    /// Which planes the project carries (drives the HAS_SERVER / HAS_WEB
+    /// Which planes the project carries (drives the HAS_SERVER / HAS_UI
     /// template conditionals).
     pub shape: ComponentShape,
 }
@@ -737,13 +737,13 @@ pub fn render_missing_file(
         req.shape,
         ComponentShape::FrontendAndBackend | ComponentShape::BackendOnly
     );
-    let has_web = matches!(
+    let has_ui = matches!(
         req.shape,
         ComponentShape::FrontendAndBackend | ComponentShape::FrontendOnly
     );
     let conds: [(&str, bool); 6] = [
         ("HAS_SERVER", has_server),
-        ("HAS_WEB", has_web),
+        ("HAS_UI", has_ui),
         ("IMPORTED", true),
         // Gap-filling targets imported projects, whose backend runtime is
         // whatever the project already carries — the fill-in files (build
@@ -823,13 +823,13 @@ mod build_script_tests {
             shape,
             ComponentShape::FrontendAndBackend | ComponentShape::BackendOnly
         );
-        let has_web = matches!(
+        let has_ui = matches!(
             shape,
             ComponentShape::FrontendAndBackend | ComponentShape::FrontendOnly
         );
         vec![
             ("HAS_SERVER", has_server),
-            ("HAS_WEB", has_web),
+            ("HAS_UI", has_ui),
             ("BACKEND_CARGO", template == BackendTemplate::Cargo),
             ("BACKEND_DENO", template == BackendTemplate::Deno),
             ("BACKEND_BUN", template == BackendTemplate::Bun),
@@ -932,22 +932,22 @@ mod build_script_tests {
                 render_dialect(tpl, ComponentShape::FrontendOnly, BackendTemplate::Cargo);
             let backend = render_dialect(tpl, ComponentShape::BackendOnly, BackendTemplate::Cargo);
 
-            // FrontendOnly: no server plane anywhere, web build intact.
+            // FrontendOnly: no server plane anywhere, ui build intact.
             assert!(!frontend.contains("cargo"), "{name} frontend carries cargo");
             assert!(
                 frontend.contains("run build"),
-                "{name} frontend lost the web build"
+                "{name} frontend lost the ui build"
             );
             assert!(
-                frontend.contains("web/dist/entry.js"),
+                frontend.contains("ui/dist/entry.js"),
                 "{name} frontend lost the entry assertion"
             );
 
-            // BackendOnly: no web plane anywhere, server build intact.
+            // BackendOnly: no ui plane anywhere, server build intact.
             assert!(!backend.contains("pnpm"), "{name} backend carries pnpm");
             assert!(
                 !backend.contains("run build"),
-                "{name} backend carries the web build"
+                "{name} backend carries the ui build"
             );
             assert!(
                 backend.contains("cargo build --release"),
@@ -962,7 +962,7 @@ mod build_script_tests {
             assert!(full.contains("cargo build --release"));
             assert!(full.contains("run build"));
             assert!(full.contains("target/release/demo-comp-server"));
-            assert!(full.contains("web/dist/entry.js"));
+            assert!(full.contains("ui/dist/entry.js"));
         }
     }
 
@@ -1065,7 +1065,7 @@ mod build_script_tests {
             BackendTemplate::Cargo,
         );
         assert!(sh.contains("if [ -d \"$ROOT/server\" ]"));
-        assert!(sh.contains("if [ -d \"$ROOT/web\" ]"));
+        assert!(sh.contains("if [ -d \"$ROOT/ui\" ]"));
 
         let ps1 = render_dialect(
             BUILD_SCRIPT_PS1,
@@ -1073,7 +1073,7 @@ mod build_script_tests {
             BackendTemplate::Cargo,
         );
         assert!(ps1.contains("Test-Path (Join-Path $Root 'server')"));
-        assert!(ps1.contains("Test-Path (Join-Path $Root 'web')"));
+        assert!(ps1.contains("Test-Path (Join-Path $Root 'ui')"));
 
         // Single-plane shapes keep only their own gate (the opposite plane is
         // stripped at template level, not just skipped at runtime).
@@ -1088,6 +1088,6 @@ mod build_script_tests {
             ComponentShape::BackendOnly,
             BackendTemplate::Cargo,
         );
-        assert!(!ps1_be.contains("'web'"));
+        assert!(!ps1_be.contains("'ui'"));
     }
 }
