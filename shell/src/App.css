@@ -354,15 +354,60 @@ body {
   margin-bottom: 12px;
 }
 
-.install-bar input {
+/* Composite install path control: typable input with an embedded trailing
+   file-picker button inside one border (same form language as the create
+   dialog's path combo) */
+.install-path-group {
+  display: flex;
+  align-items: stretch;
   flex: 1;
-  padding: 8px 10px;
+  min-width: 0;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
+}
+
+.install-path-group:focus-within {
+  border-color: var(--accent);
+}
+
+.install-path-group input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px 0 0 6px;
+  background: transparent;
   font-size: 13px;
 }
 
-.install-bar button {
+.install-path-group input:focus {
+  outline: none;
+}
+
+.install-path-browse {
+  width: 32px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.install-path-browse:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+.install-path-browse:focus {
+  outline: none;
+}
+
+/* The install bar's own standalone action buttons (install / create) — the
+   direct-children form so the embedded path-picker button stays untouched */
+.install-bar > button {
   padding: 8px 18px;
   border: 0;
   border-radius: 6px;
@@ -372,7 +417,7 @@ body {
   cursor: pointer;
 }
 
-.install-bar button:disabled {
+.install-bar > button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -890,14 +935,14 @@ button.link {
 /* The create entry sits beside the install channel's primary button: the
    secondary language of the modal footer buttons (border compensated by 1px
    padding to keep the bar's buttons aligned). */
-.install-bar button.secondary {
+.install-bar > button.secondary {
   padding: 7px 17px;
   border: 1px solid var(--border-strong);
   background: var(--bg-panel);
   color: var(--text);
 }
 
-.install-bar button.secondary:hover {
+.install-bar > button.secondary:hover {
   border-color: var(--accent);
 }
 
