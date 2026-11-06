@@ -1,9 +1,14 @@
 // App self-update dialog: a frontend-driven flow over the Rust updater
 // plugin — check → available (version + notes) → download & install
-// (progress) → relaunch straight into the new build. If the relaunch call
-// fails, the dialog falls back to an "installed" prompt for a manual restart;
-// on Windows the installer swap has already placed the new files, so a
-// manual relaunch lands on the new version either way.
+// (progress) → relaunch straight into the new build.
+//
+// The "Finished" event only means the download finished — on macOS and
+// Linux the bundle swap (install) starts after it, inside the same
+// downloadAndInstall call. Relaunching from the event would kill the
+// install mid-flight and restart the old build, so the relaunch waits
+// for the promise to resolve (install actually completed). If the
+// relaunch call fails, the dialog falls back to an "installed" prompt
+// for a manual restart.
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -59,15 +64,19 @@ export function UpdateDialog({ onClose }: { onClose: () => void }) {
             setReceived(got);
             break;
           case "Finished":
-            // The new build is in place — restart straight into it. If the
-            // relaunch call itself fails, fall back to the manual-restart
-            // prompt (phase "done").
-            setPhase("done");
-            relaunch().catch((e) => {
-              setError(String(e));
-            });
+            // Download done — the install (bundle swap) runs next inside
+            // the same call; keep the progress UI until it completes.
             break;
         }
+      })
+      .then(() => {
+        // The promise resolves after the install completed — the new
+        // build is in place. Restart straight into it; on relaunch
+        // failure fall back to the manual-restart prompt.
+        setPhase("done");
+        relaunch().catch((e) => {
+          setError(String(e));
+        });
       })
       .catch((e) => {
         setError(String(e));
