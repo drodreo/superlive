@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "shell main window default capability",
   "windows": ["main"],
-  "permissions": ["core:default", "updater:default", "dialog:default", "process:default"]
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "dialog:default",
+    "process:default"
+  ]
 }
