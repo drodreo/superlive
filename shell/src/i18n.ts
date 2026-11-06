@@ -58,7 +58,9 @@ const zh = {
   "state.ready": "就绪",
   "state.running": "运行中",
   "state.stopped": "已停止",
-  "mgr.installPlaceholder": "组件包 zip 的磁盘路径（也可把 zip 拖进窗口安装）",
+  "mgr.installPlaceholder":
+    "组件包 zip 的磁盘路径（可点击右侧按钮选择文件，或把 zip 拖进窗口安装）",
+  "mgr.pickPackage": "选择组件包文件",
   "mgr.install": "安装",
   "mgr.listFailed": "读取组件列表失败: {{error}}",
   "mgr.installedDrag": "已安装（拖拽）: {{path}}",
@@ -256,7 +258,8 @@ const en: Record<ShellKey, string> = {
   "state.running": "Running",
   "state.stopped": "Stopped",
   "mgr.installPlaceholder":
-    "Disk path of a component zip (or drag a zip into the window)",
+    "Disk path of a component zip (pick a file via the button on the right, or drag a zip into the window)",
+  "mgr.pickPackage": "Pick a component package file",
   "mgr.install": "Install",
   "mgr.listFailed": "Failed to read the component list: {{error}}",
   "mgr.installedDrag": "Installed (dragged): {{path}}",

@@ -3,9 +3,10 @@
 // + start/stop/uninstall + configuration-plane wiring.
 // Install channel note: for security the webview's input[type=file] cannot
 // get disk paths (content only), while the install command's contract is a
-// zip disk path — hence the dual channel of window drag-and-drop (tauri core
-// API, the event carries the real path, zero new dependencies) + manual path
-// entry as the fallback.
+// zip disk path — hence three channels: window drag-and-drop (tauri core
+// API, the event carries the real path), the embedded file-picker button
+// (tauri-plugin-dialog, the OS dialog returns the real path), and manual
+// path entry as the fallback.
 // Lifecycle wiring (architecture.md "Configuration plane"): install complete
 // → "Start now" prompt → needs-config routed to the config page (the start
 // gate) / the rest go to the launch options dialog → start;
@@ -16,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { firstValueFrom, type Observable } from "rxjs";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import {
   getComponentState,
@@ -169,6 +170,15 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
     refresh();
   }, [onChanged, refresh]);
 
+  // Embedded file-picker button: the OS dialog's zip filter returns the real
+  // disk path and fills the input; a cancel (null) is a silent no-op
+  const pickPackageFile = async () => {
+    const picked = await open({
+      filters: [{ name: "superlive component package", extensions: ["zip"] }],
+    });
+    if (typeof picked === "string") setZipPath(picked);
+  };
+
   const installByPath = () => {
     const path = zipPath.trim();
     if (!path) return;
@@ -216,12 +226,26 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   return (
     <section className="manager">
       <div className="install-bar">
-        <input
-          type="text"
-          placeholder={t("mgr.installPlaceholder")}
-          value={zipPath}
-          onChange={(e) => setZipPath(e.target.value)}
-        />
+        {/* Composite path control, same form language as the create dialog's
+            location field: a freely typable input with the embedded trailing
+            file-picker button */}
+        <div className="install-path-group">
+          <input
+            type="text"
+            placeholder={t("mgr.installPlaceholder")}
+            value={zipPath}
+            onChange={(e) => setZipPath(e.target.value)}
+          />
+          <button
+            type="button"
+            className="install-path-browse"
+            title={t("mgr.pickPackage")}
+            aria-label={t("mgr.pickPackage")}
+            onClick={() => void pickPackageFile()}
+          >
+            …
+          </button>
+        </div>
         <button
           type="button"
           disabled={busy || !zipPath.trim()}
