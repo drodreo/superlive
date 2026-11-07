@@ -21,10 +21,10 @@ import { ask, open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import {
   checkUpdate,
-  downloadUpdate,
   getComponentState,
   installComponent,
   listComponents,
+  performUpdate,
   startComponent,
   stopComponent,
   uninstallComponent,
@@ -224,24 +224,22 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
     }
   };
 
-  /** Confirmed "Update": download → (stop if running) → install → (restart if it was running) → result bar. */
-  const performUpdate = async (dialog: UpdateCheck & { id: string }) => {
+  /**
+   * Confirmed "Update": one command performs download → stop + wait for the
+   * running-table removal → install → restart (when it was running) — the
+   * wait semantics live inside the core command, not in this orchestration.
+   */
+  const performConfirmedUpdate = async (
+    dialog: UpdateCheck & { id: string },
+  ) => {
     setUpdateDialog(null);
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setMessage({ key: "upd.updating", params: { id: dialog.id } });
     try {
-      const state = await firstValueFrom(getComponentState(dialog.id));
-      const wasRunning = state === "running";
-      const zipPath = await firstValueFrom(downloadUpdate(dialog.id));
-      if (wasRunning) await firstValueFrom(stopComponent(dialog.id));
-      await firstValueFrom(installComponent(zipPath));
-      if (wasRunning) await firstValueFrom(startComponent(dialog.id));
-      setMessage({
-        key: "upd.done",
-        params: { version: dialog.latest },
-      });
+      const version = await firstValueFrom(performUpdate(dialog.id));
+      setMessage({ key: "upd.done", params: { version } });
       afterChange();
     } catch (e) {
       setMessage({ key: "upd.failed", params: { error: String(e) } });
@@ -510,7 +508,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                 type="button"
                 className="primary"
                 disabled={busy}
-                onClick={() => void performUpdate(updateDialog)}
+                onClick={() => void performConfirmedUpdate(updateDialog)}
               >
                 {t("upd.update")}
               </button>

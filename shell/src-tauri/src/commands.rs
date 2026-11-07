@@ -405,18 +405,32 @@ pub async fn check_update(
     })
 }
 
-/// Download a component's update package: fetch the feed (same source as
-/// [`check_update`]), resolve this platform's package URL from the release
-/// matrix, download the zip into the system temp directory (file name
-/// carries the component id and the feed version) and return its path —
-/// the caller passes it to `install_component` (same-id reinstall keeps the
-/// component's config).
+/// Perform a component update in one command: download the new package
+/// (first — any failure here leaves a running component untouched), stop the
+/// running process and wait for the running-table removal, reinstall from
+/// the temp zip (same-id install keeps the component's config), restart when
+/// it was running, and return the feed's version (the frontend's done
+/// message).
+///
+/// Why a single command instead of a frontend orchestration over
+/// `stop_component` / `install_component`: stop is a graceful-exit *request*
+/// — installing immediately after it can hit ETXTBSY (the old binary is
+/// still executing) and the restart can hit "already running" (the
+/// running-table entry is not yet removed). The wait semantics only exist
+/// inside the core ([`config_plane::stop_and_wait_removed`]), so the whole
+/// sequence lives on this side.
 #[tauri::command]
-pub async fn download_update(
+pub async fn perform_update(
     state: tauri::State<'_, AppState>,
     id: String,
 ) -> Result<String, String> {
-    let (_entry, declaration) = update_entry(&state, &id).await?;
+    perform_update_core(&state, &id).await
+}
+
+async fn perform_update_core(state: &AppState, id: &str) -> Result<String, String> {
+    // ① Download first (feed → platform key → zip → temp file): every failure
+    // in this stage leaves the component exactly as it was.
+    let (_entry, declaration) = update_entry(state, id).await?;
     let client = update_http_client()?;
     let body = fetch_text(&client, &declaration.manifest_url, "the update feed").await?;
     let feed = parse_update_feed(&body)?;
@@ -425,14 +439,90 @@ pub async fn download_update(
         format!("the update feed for component {id} has no package for this platform ({key})")
     })?;
     let bytes = fetch_bytes(&client, zip_url, "the update package").await?;
-    let path = std::env::temp_dir().join(format!("superlive-update-{id}-{}.zip", feed.version));
-    tokio::fs::write(&path, &bytes).await.map_err(|e| {
+    let zip_path = std::env::temp_dir().join(format!("superlive-update-{id}-{}.zip", feed.version));
+    tokio::fs::write(&zip_path, &bytes).await.map_err(|e| {
         format!(
             "failed to write the downloaded package to {}: {e}",
-            path.display()
+            zip_path.display()
         )
     })?;
-    Ok(path.to_string_lossy().into_owned())
+
+    // ② Running state of the *old* version, before anything is replaced.
+    let entry = find_entry(state, id).await?;
+    let namespace = entry.manifest.namespace.clone();
+    let was_running = state.registry.lookup(&namespace).await.is_some();
+
+    // ③ Running → graceful stop + wait for the running-table removal:
+    // installing over a live binary is ETXTBSY, restarting without the
+    // removal is "already running".
+    if was_running {
+        config_plane::stop_and_wait_removed(&state.registry, &namespace, id).await?;
+    }
+
+    // ④ Reinstall from the temp zip + settle the config state (the
+    // install_component command's body shape). The temp zip is consumed
+    // either way: after a success it is stale, after a failure it must not
+    // be left behind for the next attempt to trip over.
+    let installed = async {
+        let manifest = installer::install(&zip_path, &state.layout)
+            .await
+            .map_err(|e| e.to_string())?;
+        config_plane::reconcile_state(
+            &state.layout,
+            &manifest,
+            state.layout.component_config_file(&manifest.id),
+        )
+        .await
+        .map_err(|e| format!("failed to persist the config state after install: {e}"))?;
+        Ok::<_, String>(manifest)
+    }
+    .await;
+    let _ = tokio::fs::remove_file(&zip_path).await;
+    let manifest = match installed {
+        Ok(manifest) => manifest,
+        Err(e) => {
+            // The old process is already stopped at this point — the error
+            // must say so, the user is looking at a stopped component
+            let stopped = if was_running {
+                "; the previous process was stopped and not restarted"
+            } else {
+                ""
+            };
+            return Err(format!("{e}{stopped}"));
+        }
+    };
+
+    // ⑤ Restart when it was running (the start_component command's gate
+    // shape: a new version may introduce required config keys — the gate
+    // rejects with the missing-key list instead of a vague spawn failure).
+    if was_running {
+        let entry = registry::refresh_dev_entry(&state.layout, &RegistryEntry::installed(manifest))
+            .await
+            .map_err(|e| format!("failed to refresh the dev component declaration: {e}"))?;
+        let config_path = registry::config_path_for(&state.layout, &entry);
+        let missing = config_plane::required_missing_keys(&entry.manifest, &config_path).await?;
+        if !missing.is_empty() {
+            return Err(format!(
+                "component {id} updated, but the new version is missing required config ({}); complete it on the configuration page before starting",
+                missing.join("、")
+            ));
+        }
+        if state
+            .registry
+            .lookup(&entry.manifest.namespace)
+            .await
+            .is_some()
+        {
+            return Err(format!("component {id} is already running"));
+        }
+        registry::ensure_launch_artifact(&entry)?;
+        let workdir = registry::workdir_for(&state.layout, &entry);
+        supervisor::launch_with_transition(state, Arc::new(entry.manifest), workdir)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(feed.version)
 }
 
 // ---------- Configuration plane (architecture.md "Configuration plane"; the command contract is the UI-line coding anchor) ----------
@@ -1738,5 +1828,188 @@ mod tests {
             platform_package_key().unwrap(),
             "linux-x86_64" | "macos-aarch64" | "windows-x86_64"
         ));
+    }
+
+    // ---------- perform_update (integration: a local feed + package server) ----------
+
+    /// sha256 hex (the packaged manifest's fingerprint entries).
+    fn update_sha256_hex(data: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(data)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    /// Build a valid component package zip in memory (manifest.json carrying
+    /// the update declaration + fingerprinted files), following the
+    /// installer tests' archive shape.
+    fn make_update_zip(
+        id: &str,
+        ns: &str,
+        version: &str,
+        feed_url: &str,
+        files: &[(&str, &[u8])],
+    ) -> Vec<u8> {
+        use zip::write::SimpleFileOptions;
+        let entries: Vec<String> = files
+            .iter()
+            .map(|(p, c)| {
+                format!(
+                    r#"{{ "path": "{p}", "sha256": "{}" }}"#,
+                    update_sha256_hex(c)
+                )
+            })
+            .collect();
+        let manifest = format!(
+            r#"{{ "id": "{id}", "version": "{version}", "min_shell_version": "0.1.0", "namespace": "{ns}", "display_name": "{id}", "menu": null, "routes": [], "update": {{ "manifest_url": "{feed_url}" }}, "files": [{}] }}"#,
+            entries.join(",")
+        );
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buf);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            writer.start_file("manifest.json", options).unwrap();
+            std::io::Write::write_all(&mut writer, manifest.as_bytes()).unwrap();
+            for (name, content) in files {
+                writer.start_file(*name, options).unwrap();
+                std::io::Write::write_all(&mut writer, content).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    /// Serve the feed + package routes on the given listener (the caller
+    /// binds first so the feed/package URLs can reference the same port).
+    fn spawn_feed_server(listener: tokio::net::TcpListener, feed_body: String, zip_body: Vec<u8>) {
+        use axum::{Router, routing::get};
+        let router = Router::new()
+            .route(
+                "/feed.json",
+                get(move || {
+                    let body = feed_body.clone();
+                    async move { body }
+                }),
+            )
+            .route(
+                "/pkg.zip",
+                get(move || {
+                    let body = zip_body.clone();
+                    async move { body }
+                }),
+            );
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+    }
+
+    /// Register an installed-form envelope with an update declaration (the
+    /// perform_update flow's precondition). The files entry is a real-shaped
+    /// snapshot: package-level validation rejects an empty files list.
+    fn write_update_envelope(state: &AppState, id: &str, ns: &str, version: &str, feed_url: &str) {
+        let entry = RegistryEntry::installed(
+            serde_json::from_str(&format!(
+                r#"{{
+                "id": "{id}",
+                "version": "{version}",
+                "min_shell_version": "0.1.0",
+                "namespace": "{ns}",
+                "display_name": "{id}",
+                "menu": null,
+                "routes": [],
+                "update": {{ "manifest_url": "{feed_url}" }},
+                "files": [ {{ "path": "assets/main.js", "sha256": "aa" }} ]
+            }}"#
+            ))
+            .unwrap(),
+        );
+        write_envelope(state, &entry);
+    }
+
+    #[tokio::test]
+    async fn perform_update_installs_the_new_version_when_not_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        state.layout.ensure_dirs().unwrap();
+
+        // Package first (its bytes feed the server and the zip's manifest
+        // carries the same feed URL as the registered envelope)
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let feed_url = format!("{base}/feed.json");
+        let zip_bytes = make_update_zip(
+            "updapp",
+            "updapp",
+            "0.2.0",
+            &feed_url,
+            &[("assets/main.js", b"new body")],
+        );
+        let feed_body = format!(
+            r#"{{ "version": "0.2.0", "notes": "test release", "packages": {{ "linux-x86_64": "{base}/pkg.zip", "macos-aarch64": "{base}/pkg.zip", "windows-x86_64": "{base}/pkg.zip" }} }}"#
+        );
+        spawn_feed_server(listener, feed_body, zip_bytes);
+
+        write_update_envelope(&state, "updapp", "updapp", "0.1.0", &feed_url);
+
+        let version = perform_update_core(&state, "updapp").await.unwrap();
+        assert_eq!(version, "0.2.0");
+
+        // The registry now carries the new version, with the update
+        // declaration preserved (the next check keeps working)
+        let updated = registry::load_entry(&state.layout, "updapp")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.manifest.version, "0.2.0");
+        assert_eq!(
+            updated.manifest.update.as_ref().unwrap().manifest_url,
+            feed_url
+        );
+
+        // The temp zip is consumed (nothing left for the next attempt)
+        assert!(
+            !std::env::temp_dir()
+                .join("superlive-update-updapp-0.2.0.zip")
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn perform_update_unreachable_feed_leaves_the_registry_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        state.layout.ensure_dirs().unwrap();
+
+        // A bound-then-dropped listener: the port answers nothing (connection
+        // refused) — the download stage fails before anything is replaced
+        let dying = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", dying.local_addr().unwrap());
+        drop(dying);
+
+        write_update_envelope(
+            &state,
+            "deadapp",
+            "deadapp",
+            "0.1.0",
+            &format!("{base}/feed.json"),
+        );
+
+        let e = perform_update_core(&state, "deadapp").await.unwrap_err();
+        assert!(e.contains("failed to fetch"), "unexpected error: {e}");
+
+        // The registered version is untouched (check-then-act held)
+        let untouched = registry::load_entry(&state.layout, "deadapp")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(untouched.manifest.version, "0.1.0");
+        // No temp zip for the dead version was ever written
+        assert!(
+            !std::env::temp_dir()
+                .join("superlive-update-deadapp-0.2.0.zip")
+                .exists()
+        );
     }
 }

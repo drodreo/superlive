@@ -216,9 +216,13 @@ export interface UpdateCheck {
 export const checkUpdate = (id: string): Observable<UpdateCheck> =>
   invoke$<UpdateCheck>("check_update", { id });
 
-/** Download the component's update package zip into the system temp directory; resolves to the temp file path. */
-export const downloadUpdate = (id: string): Observable<string> =>
-  invoke$<string>("download_update", { id });
+/**
+ * Perform a component update in one command: download → stop + wait for the
+ * running-table removal → reinstall (same-id install keeps the config) →
+ * restart when it was running. Resolves to the feed's version.
+ */
+export const performUpdate = (id: string): Observable<string> =>
+  invoke$<string>("perform_update", { id });
 
 // ---------- Shell endpoint URLs and /api requests ----------
 
