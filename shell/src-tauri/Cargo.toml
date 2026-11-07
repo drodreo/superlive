@@ -51,6 +51,11 @@ sha2 = "0.10"
 # Version aligned with slsdk-rs's toml so Cargo converges to one instance and
 # both ends parse identically
 toml = "0.8"
+# Component update flow (check_update / download_update): feed + package zip
+# fetch. rustls only — no native-tls system dependency on any platform
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# Update feed semver comparison (strict greater = an update is available)
+semver = "1"
 
 # unix graceful exit sends SIGTERM (tokio only has SIGKILL-grade start_kill;
 # nix is the safe wrapper, no unsafe)

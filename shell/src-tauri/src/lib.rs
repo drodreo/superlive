@@ -123,6 +123,8 @@ pub fn run() {
             commands::write_component_config,
             commands::get_component_state,
             commands::set_launch_policy,
+            commands::check_update,
+            commands::download_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
