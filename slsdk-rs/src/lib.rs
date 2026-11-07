@@ -30,7 +30,7 @@ pub use events::{
 pub use manifest::{
     ComponentConfig, ComponentManifest, ConfigField, ConfigFieldType, FileEntry, LaunchConfig,
     ManifestError, MenuDeclaration, RouteDeclaration, TransportCaps, UiDeclaration, UiType,
-    VerifyError, strip_verbatim_prefix, verify_files,
+    UpdateDeclaration, VerifyError, strip_verbatim_prefix, verify_files,
 };
 pub use serve::{
     ServeError, ServeInfo, ShutdownHandle, serve, serve_with_config, serve_with_events,

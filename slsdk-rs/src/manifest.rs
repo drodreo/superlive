@@ -69,6 +69,28 @@ pub struct ComponentManifest {
     /// omits the default so existing manifest bytes stay identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<TransportCaps>,
+    /// Update feed declaration: the URL of the version manifest the shell
+    /// polls for the "check for updates" action. `None` = the component does
+    /// not participate in the update flow (the shell renders no update
+    /// button). The feed document itself is a shell-side network contract
+    /// (version + notes + per-platform package URLs), not a package manifest —
+    /// the declaration only carries where to ask. `serde(default)` keeps
+    /// existing manifests (without the key) parsing unchanged, and
+    /// `skip_serializing_if` omits the default so existing manifest bytes
+    /// stay identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update: Option<UpdateDeclaration>,
+}
+
+/// Update feed declaration (the manifest's optional `update` section): where
+/// the shell asks for the latest component version. The feed document schema
+/// (`{ version, notes?, packages: { "<platform-key>": <zip-url> } }`) is
+/// consumed and parsed by the shell's update commands, not by this crate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateDeclaration {
+    /// URL of the version feed document (stable address, content bumps with
+    /// each release — e.g. a `latest/download` style permanent link).
+    pub manifest_url: String,
 }
 
 /// Transport capability tiers a component backend can declare
@@ -697,6 +719,61 @@ mod transport_tests {
 
         let round: ComponentManifest = serde_json::from_str(&bytes).unwrap();
         assert_eq!(round.transport, None);
+    }
+}
+
+#[cfg(test)]
+mod update_declaration_tests {
+    use super::*;
+
+    /// Minimal valid manifest body (legacy shape: no update key).
+    const LEGACY_MANIFEST: &str = r#"{
+        "id": "demo",
+        "version": "0.1.0",
+        "min_shell_version": "0.2.0",
+        "namespace": "demo",
+        "display_name": "Demo",
+        "menu": null,
+        "routes": [],
+        "files": []
+    }"#;
+
+    #[test]
+    fn legacy_manifest_without_update_key_parses_as_none() {
+        let manifest: ComponentManifest = serde_json::from_str(LEGACY_MANIFEST).unwrap();
+        assert_eq!(manifest.update, None);
+    }
+
+    #[test]
+    fn declared_update_parses_and_survives_a_round_trip() {
+        let manifest: ComponentManifest = serde_json::from_str(&LEGACY_MANIFEST.replace(
+            r#""files": []"#,
+            r#""files": [], "update": { "manifest_url": "https://example.com/demo/latest.json" }"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            manifest.update,
+            Some(UpdateDeclaration {
+                manifest_url: "https://example.com/demo/latest.json".into(),
+            })
+        );
+
+        let bytes = serde_json::to_string(&manifest).unwrap();
+        let back: ComponentManifest = serde_json::from_str(&bytes).unwrap();
+        assert_eq!(back.update, manifest.update);
+    }
+
+    #[test]
+    fn none_update_serializes_without_the_key() {
+        // Byte compatibility: a manifest without an update declaration
+        // serializes exactly like the pre-field schema (the key is absent,
+        // not null).
+        let manifest: ComponentManifest = serde_json::from_str(LEGACY_MANIFEST).unwrap();
+        let bytes = serde_json::to_string(&manifest).unwrap();
+        assert!(!bytes.contains("update"), "{bytes}");
+
+        let round: ComponentManifest = serde_json::from_str(&bytes).unwrap();
+        assert_eq!(round.update, None);
     }
 }
 
