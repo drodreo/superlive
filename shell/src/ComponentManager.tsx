@@ -20,14 +20,17 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import {
+  checkUpdate,
   getComponentState,
   installComponent,
   listComponents,
+  performUpdate,
   startComponent,
   stopComponent,
   uninstallComponent,
   type ComponentInfo,
   type ComponentState,
+  type UpdateCheck,
 } from "./api";
 import { navigate } from "./router";
 import { Modal } from "./Modal";
@@ -192,6 +195,59 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   /** The component's current four-state: states hit first; missing entries fall back to the running boolean. */
   const stateOf = (c: ComponentInfo): ComponentState =>
     states[c.id] ?? (c.running ? "running" : "stopped");
+
+  // ---------- Component update flow (manifest `update` declaration) ----------
+
+  // The confirmation dialog's payload: the check result + the component id
+  const [updateDialog, setUpdateDialog] = useState<
+    (UpdateCheck & { id: string }) | null
+  >(null);
+
+  /** "Check for updates": check → no update = a message bar / update available = the confirmation dialog. */
+  const beginUpdateFlow = async (id: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const check = await firstValueFrom(checkUpdate(id));
+      if (check.has_update) {
+        setUpdateDialog({ ...check, id });
+      } else {
+        setMessage({ key: "upd.upToDate" });
+      }
+    } catch (e) {
+      setMessage({ key: "upd.failed", params: { error: String(e) } });
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Confirmed "Update": one command performs download → stop + wait for the
+   * running-table removal → install → restart (when it was running) — the
+   * wait semantics live inside the core command, not in this orchestration.
+   */
+  const performConfirmedUpdate = async (
+    dialog: UpdateCheck & { id: string },
+  ) => {
+    setUpdateDialog(null);
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setMessage({ key: "upd.updating", params: { id: dialog.id } });
+    try {
+      const version = await firstValueFrom(performUpdate(dialog.id));
+      setMessage({ key: "upd.done", params: { version } });
+      afterChange();
+    } catch (e) {
+      setMessage({ key: "upd.failed", params: { error: String(e) } });
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
 
   // Post-install "Start now": the start gate per the lifecycle contract —
   // needs-config is routed to the config page,
@@ -359,6 +415,16 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                       )}
                     </>
                   )}
+                  {/* Update flow entry: only components declaring an update source participate */}
+                  {c.update != null && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void beginUpdateFlow(c.id)}
+                    >
+                      {t("upd.check")}
+                    </button>
+                  )}{" "}
                   <button
                     type="button"
                     className="danger"
@@ -422,6 +488,40 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                   ?.display_name ?? installPromptId,
             })}
           </p>
+        </Modal>
+      )}
+
+      {/* Update confirmation: current → latest (+ the feed's notes when present) */}
+      {updateDialog && (
+        <Modal
+          title={t("upd.title")}
+          footer={
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setUpdateDialog(null)}
+              >
+                {t("upd.cancel")}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() => void performConfirmedUpdate(updateDialog)}
+              >
+                {t("upd.update")}
+              </button>
+            </>
+          }
+        >
+          <p>
+            {t("upd.currentToLatest", {
+              current: updateDialog.current,
+              latest: updateDialog.latest,
+            })}
+          </p>
+          {updateDialog.notes && <p>{updateDialog.notes}</p>}
         </Modal>
       )}
 

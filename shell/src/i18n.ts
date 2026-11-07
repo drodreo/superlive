@@ -100,6 +100,18 @@ const zh = {
   "launch.manual": "手动：在组件管理页手动启动",
   "launch.policyFailed": "保存启动策略失败: {{error}}",
 
+  // Component update flow (the manifest's optional update declaration:
+  // check → confirm → download → stop → install → restart)
+  "upd.check": "检查更新",
+  "upd.upToDate": "已是最新版本",
+  "upd.title": "发现新版本",
+  "upd.currentToLatest": "当前 {{current}} → 最新 {{latest}}",
+  "upd.update": "更新",
+  "upd.cancel": "取消",
+  "upd.updating": "正在更新 {{id}}…",
+  "upd.done": "已更新到 {{version}}",
+  "upd.failed": "更新失败: {{error}}",
+
   // Component creation dialog (the creation entry over the create_component
   // command; field-level errors branch on the command error's kind, messages
   // pass the command's original text through — the established convention)
@@ -302,6 +314,18 @@ const en: Record<ShellKey, string> = {
   "launch.manual":
     "Manual: start it yourself from the component management page",
   "launch.policyFailed": "Failed to save the launch policy: {{error}}",
+
+  // Component update flow (the manifest's optional update declaration:
+  // check → confirm → download → stop → install → restart)
+  "upd.check": "Check for updates",
+  "upd.upToDate": "Already the latest version",
+  "upd.title": "New version available",
+  "upd.currentToLatest": "Current {{current}} → latest {{latest}}",
+  "upd.update": "Update",
+  "upd.cancel": "Cancel",
+  "upd.updating": "Updating {{id}}…",
+  "upd.done": "Updated to {{version}}",
+  "upd.failed": "Update failed: {{error}}",
 
   // Component creation dialog
   "mgr.create": "Create component",

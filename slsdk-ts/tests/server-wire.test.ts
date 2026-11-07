@@ -122,6 +122,19 @@ describe("composeHandler wire contract (one-to-one with slsdk-rs serve.rs)", () 
     expect(await res.text()).toBe("echo:POST:/api/wire/items:t9:payload-bytes");
   });
 
+  it("a manifest carrying the optional update declaration keeps the wire contract unchanged (/health stays the bare identity payload)", async () => {
+    const withUpdate: ServerManifest = {
+      ...manifest,
+      update: { manifest_url: "https://example.com/wire-comp/latest.json" },
+    };
+    const handle = composeHandler(noop, withUpdate, null);
+    const res = await handle(new Request("http://127.0.0.1:0/health"));
+    expect(res.status).toBe(200);
+    // the update section rides on the manifest as a declaration only — it never
+    // reaches the wire payloads the serve surface emits
+    expect(await res.text()).toBe('{"id":"wire-comp","version":"1.2.3"}');
+  });
+
   it("a handler rejection maps to an empty 500, keeping the contract typed", async () => {
     const handle = composeHandler(
       () => {

@@ -59,6 +59,7 @@ function makeInfo(overrides: Partial<ComponentInfo> = {}): ComponentInfo {
     ui: { ui_type: "surface", entry: "surface.json" },
     menu: null,
     routes: [],
+    update: null,
     source: "installed",
     project_dir: null,
     ...overrides,

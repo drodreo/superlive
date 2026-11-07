@@ -44,6 +44,9 @@ fn component_manifest() -> ComponentManifest {
         // serve() never consumes the transport declaration (identity only):
         // absent = every transport the host platform offers.
         transport: None,
+        // No update manifest declared: the shell's update-check button stays
+        // hidden for scaffolded components until the author publishes one.
+        update: None,
     }
 }
 

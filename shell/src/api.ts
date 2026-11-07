@@ -37,6 +37,12 @@ export interface RouteDeclaration {
   titles?: Record<string, string>;
 }
 
+/** Update feed declaration (the manifest's optional `update` section); null = the component does not participate in the update flow. */
+export interface UpdateDeclaration {
+  /** URL of the version feed document (stable address, content bumps with each release). */
+  manifest_url: string;
+}
+
 /** Where a registered component's body lives (disk envelope source field). */
 export type ComponentSource = "installed" | "dev";
 
@@ -50,6 +56,8 @@ export interface ComponentInfo {
   ui: UiDeclaration | null;
   menu: MenuDeclaration | null;
   routes: RouteDeclaration[];
+  /** Update feed declaration; null = no update button rendered for this component. */
+  update: UpdateDeclaration | null;
   /** installed = deployed into the install directory; dev = stays in the project directory (reload is the upgrade path). */
   source: ComponentSource;
   /** The project directory for dev entries; null for installed. */
@@ -193,6 +201,28 @@ export const startComponent = (id: string): Observable<void> =>
 /** Stop a component backend. */
 export const stopComponent = (id: string): Observable<void> =>
   invoke$<void>("stop_component", { id });
+
+// ---------- Component update flow (the manifest's optional `update` declaration) ----------
+
+/** The check_update command's structured result (the confirmation dialog's basis). */
+export interface UpdateCheck {
+  current: string;
+  latest: string;
+  notes: string | null;
+  has_update: boolean;
+}
+
+/** Check a component for updates against its declared feed (strict semver greater = has_update). */
+export const checkUpdate = (id: string): Observable<UpdateCheck> =>
+  invoke$<UpdateCheck>("check_update", { id });
+
+/**
+ * Perform a component update in one command: download → stop + wait for the
+ * running-table removal → reinstall (same-id install keeps the config) →
+ * restart when it was running. Resolves to the feed's version.
+ */
+export const performUpdate = (id: string): Observable<string> =>
+  invoke$<string>("perform_update", { id });
 
 // ---------- Shell endpoint URLs and /api requests ----------
 

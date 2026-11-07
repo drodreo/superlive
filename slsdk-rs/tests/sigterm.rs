@@ -51,6 +51,7 @@ fn probe_manifest() -> ComponentManifest {
         files: Vec::new(),
         config: None,
         transport: None,
+        update: None,
     }
 }
 

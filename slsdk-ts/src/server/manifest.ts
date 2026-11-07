@@ -38,6 +38,18 @@ export interface ServerManifest {
    * choosing the injected `SL_ENDPOINT` descriptor); absent = every transport the host
    * platform offers (Unix domain socket on Linux/macOS, loopback TCP everywhere). */
   transport?: TransportCaps;
+  /** Update feed declaration (where the shell asks for the latest version); absent = the
+   * component does not participate in the update flow (the shell renders no update button). */
+  update?: UpdateDeclaration;
+}
+
+/** Update feed declaration (the manifest's optional `update` section): where the shell
+ * asks for the latest component version. The feed document itself
+ * (`{ version, notes?, packages: { "<platform-key>": <zip-url> } }`) is a shell-side
+ * network contract, not a package manifest. */
+export interface UpdateDeclaration {
+  /** URL of the version feed document (stable address, content bumps with each release). */
+  manifest_url: string;
 }
 
 /** Transport capability tiers (architecture.md "Plane B contract · transport"; lowercase
