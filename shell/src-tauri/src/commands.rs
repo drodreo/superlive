@@ -2094,4 +2094,215 @@ mod tests {
                 .exists()
         );
     }
+
+    // ---------- perform_update with a live component process (real-process e2e) ----------
+
+    /// Locate the test-component helper binary (src/bin/test-component.rs).
+    /// CARGO_BIN_EXE_* is only set when building integration tests, and
+    /// `cargo test` does not put plain bin targets on its build plan (both
+    /// verified empirically), so a unit test cannot rely on either: the
+    /// helper is located through the cargo target layout (the test binary
+    /// lives at <target>/<profile>/deps/, the helper at <target>/<profile>/)
+    /// and built on a miss. Concurrent test threads are serialized by
+    /// cargo's own build lock; a fingerprint hit returns instantly.
+    fn test_component_bin() -> PathBuf {
+        let exe = std::env::current_exe().expect("the test binary path");
+        let profile_dir = exe
+            .parent()
+            .and_then(Path::parent)
+            .expect("the test binary's deps/ parent is the cargo profile dir")
+            .to_path_buf();
+        let name = if cfg!(windows) {
+            "test-component.exe"
+        } else {
+            "test-component"
+        };
+        let path = profile_dir.join(name);
+        if !path.exists() {
+            let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+            let status = std::process::Command::new(cargo)
+                .args(["build", "--bin", "test-component"])
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .status()
+                .expect("failed to spawn cargo for the test-component helper build");
+            assert!(
+                status.success(),
+                "building the test-component helper failed: {status}"
+            );
+        }
+        assert!(
+            path.exists(),
+            "the test-component helper is still missing after the build ({})",
+            path.display()
+        );
+        path
+    }
+
+    /// Build a live-component package zip: manifest with a launch declaration
+    /// (argv carries the generation's id/version) + the helper binary as the
+    /// single files entry. The zip entry carries the unix exec bit — the
+    /// installer restores it on unix, and a 0644 binary would fail to spawn.
+    fn make_live_zip(
+        id: &str,
+        ns: &str,
+        version: &str,
+        feed_url: &str,
+        bin_bytes: &[u8],
+    ) -> Vec<u8> {
+        let bin_name = if cfg!(windows) {
+            "test-component.exe"
+        } else {
+            "test-component"
+        };
+        let manifest = format!(
+            r#"{{
+            "id": "{id}",
+            "version": "{version}",
+            "min_shell_version": "0.1.0",
+            "namespace": "{ns}",
+            "display_name": "{id}",
+            "menu": null,
+            "routes": [],
+            "launch": {{ "command": "{bin_name}", "args": ["{id}", "{version}"] }},
+            "update": {{ "manifest_url": "{feed_url}" }},
+            "files": [ {{ "path": "{bin_name}", "sha256": "{}" }} ]
+        }}"#,
+            update_sha256_hex(bin_bytes)
+        );
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buf);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated)
+                .unix_permissions(0o755);
+            writer.start_file("manifest.json", options).unwrap();
+            std::io::Write::write_all(&mut writer, manifest.as_bytes()).unwrap();
+            writer.start_file(bin_name, options).unwrap();
+            std::io::Write::write_all(&mut writer, bin_bytes).unwrap();
+            writer.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    /// Probe the live component's /health and return the version it reports
+    /// (each generation reports the version from its own argv — the
+    /// process-level proof that the restarted process is the new package,
+    /// not just that some process is listening).
+    async fn probe_component_version(endpoint: &slsdk_rs::Endpoint, token: &str) -> Option<String> {
+        use http_body_util::BodyExt;
+        let stream = crate::gateway::connect_component(endpoint).await.ok()?;
+        let (mut sender, conn) = hyper::client::conn::http1::handshake(stream).await.ok()?;
+        tokio::spawn(async move {
+            let _ = conn.await;
+        });
+        let req = hyper::Request::builder()
+            .uri("http://localhost/health")
+            .header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(axum::body::Body::empty())
+            .ok()?;
+        let res = sender.send_request(req).await.ok()?;
+        if !res.status().is_success() {
+            return None;
+        }
+        let bytes = res.into_body().collect().await.ok()?.to_bytes().to_vec();
+        serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|v| {
+                v.get("version")
+                    .and_then(|v| v.as_str().map(str::to_string))
+            })
+    }
+
+    /// The full update chain against a real child process: install v1 →
+    /// spawn (supervise, health-gated) → perform_update against a v2 feed →
+    /// assert the old process exited, the new one is running, and its own
+    /// /health reports the v2 version. This is the was_running=true half of
+    /// the update contract the install-time tests can't cover: a real
+    /// graceful stop (SIGTERM / stdin shutdown), a real binary replacement
+    /// (ETXTBSY territory), and a real restart.
+    #[tokio::test]
+    async fn perform_update_with_a_live_component_process() {
+        use std::time::Duration;
+        // A wedged stop/restart must fail the test loudly, not hang CI: the
+        // budget covers the health polls, one graceful stop (the 5s grace
+        // period) and one restart on slow runners.
+        tokio::time::timeout(Duration::from_secs(120), async {
+            let dir = tempfile::tempdir().unwrap();
+            let state = AppState::new(dir.path().join("data")).unwrap();
+            state.layout.ensure_dirs().unwrap();
+
+            let bin_bytes = std::fs::read(test_component_bin()).unwrap();
+
+            // The feed serving the v2 package (bound first so the feed URL
+            // and the zip manifest share the same port)
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let feed_url = format!("{base}/feed.json");
+            let zip_bytes =
+                make_live_zip("livedemo", "livedemo", "0.2.0", &feed_url, &bin_bytes);
+            let feed_body = format!(
+                r#"{{ "version": "0.2.0", "notes": "test release", "packages": {{ "linux-x86_64": "{base}/pkg.zip", "macos-aarch64": "{base}/pkg.zip", "windows-x86_64": "{base}/pkg.zip" }} }}"#
+            );
+            spawn_feed_server(listener, feed_body, zip_bytes);
+
+            // Install v1 through the real installer (the fingerprinted
+            // binary lands in the component directory)
+            let v1_zip = make_live_zip("livedemo", "livedemo", "0.1.0", &feed_url, &bin_bytes);
+            let v1_path = dir.path().join("test-component-0.1.0.zip");
+            std::fs::write(&v1_path, &v1_zip).unwrap();
+            let manifest = installer::install(&v1_path, &state.layout).await.unwrap();
+            config_plane::reconcile_state(
+                &state.layout,
+                &manifest,
+                state.layout.component_config_file("livedemo"),
+            )
+            .await
+            .unwrap();
+            let entry = RegistryEntry::installed(manifest);
+            write_envelope(&state, &entry);
+
+            // Start the real process (the start_component command's core
+            // minus its tauri State): spawn → health → supervise + register
+            let workdir = registry::workdir_for(&state.layout, &entry);
+            supervisor::launch_with_transition(&state, Arc::new(entry.manifest.clone()), workdir)
+                .await
+                .unwrap();
+            let running = state.registry.lookup("livedemo").await.unwrap();
+            assert_eq!(running.manifest.version, "0.1.0");
+
+            // The whole chain in one command: download → graceful stop (a
+            // real SIGTERM/stdin shutdown on a real process) → reinstall →
+            // restart
+            let version = perform_update_core(&state, "livedemo").await.unwrap();
+            assert_eq!(version, "0.2.0");
+
+            // Running again, registered under the new generation's manifest
+            let running = state.registry.lookup("livedemo").await.unwrap();
+            assert_eq!(running.manifest.version, "0.2.0");
+
+            // The new process is the new generation: its /health reports the
+            // version from its own argv (the old process served 0.1.0)
+            let reported = probe_component_version(&running.endpoint, running.token.as_str())
+                .await
+                .expect("the restarted component must answer /health");
+            assert_eq!(reported, "0.2.0");
+
+            // The on-disk registration carries the new version too (the
+            // next update check's baseline)
+            let updated = registry::load_entry(&state.layout, "livedemo")
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(updated.manifest.version, "0.2.0");
+
+            // The temp zip was consumed
+            assert!(
+                !std::env::temp_dir()
+                    .join("superlive-update-livedemo-0.2.0.zip")
+                    .exists()
+            );
+        })
+        .await
+        .expect("the live-process update flow must finish within the test budget");
+    }
 }
