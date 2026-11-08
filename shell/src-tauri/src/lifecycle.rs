@@ -187,6 +187,11 @@ pub async fn spawn_component(
     let mut command = {
         let mut c = Command::new(&program);
         c.stdin(Stdio::piped());
+        // A GUI shell spawning a console-subsystem component must not flash
+        // a console window (CreateProcessW allocates one by default):
+        // CREATE_NO_WINDOW (0x08000000) suppresses it. The pipe redirections
+        // below (stdin/stdout/stderr) are unaffected by this flag.
+        c.creation_flags(0x08000000);
         c
     };
     command
