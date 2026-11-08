@@ -25,10 +25,25 @@ use tokio::sync::watch;
 #[derive(Debug)]
 pub enum LifecycleError {
     /// Child process spawn failure (command missing / directory missing, etc.).
-    Spawn { source: io::Error },
+    Spawn {
+        source: io::Error,
+        /// The binary the shell tried to launch (and the arguments it would
+        /// have carried) — a standalone log line must answer "what did the
+        /// shell try to run".
+        program: PathBuf,
+        args: Vec<String>,
+    },
     /// Health probe timeout: the component did not become ready within the
     /// deadline (or the id mismatched).
-    HealthTimeout { id: String },
+    HealthTimeout {
+        id: String,
+        /// The descriptor the shell kept polling — the dial target.
+        endpoint: String,
+        /// Outcome of the most recent probe (connection error or mismatched
+        /// response): without it the timeout alone cannot distinguish "not
+        /// listening yet" from "listening but wrong identity".
+        last_probe: String,
+    },
     /// Other IO failure.
     Io { source: io::Error },
     /// The namespace is already taken.
@@ -38,13 +53,25 @@ pub enum LifecycleError {
 impl std::fmt::Display for LifecycleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LifecycleError::Spawn { source } => {
-                write!(f, "failed to spawn the component process: {source}")
-            }
-            LifecycleError::HealthTimeout { id } => {
+            LifecycleError::Spawn {
+                source,
+                program,
+                args,
+            } => {
                 write!(
                     f,
-                    "component {id} health probe timed out; it did not become ready within the deadline"
+                    "failed to spawn the component process (program={} args={args:?}): {source}",
+                    program.display()
+                )
+            }
+            LifecycleError::HealthTimeout {
+                id,
+                endpoint,
+                last_probe,
+            } => {
+                write!(
+                    f,
+                    "component {id} health probe timed out; it did not become ready within the deadline (endpoint={endpoint}; last probe outcome: {last_probe})"
                 )
             }
             LifecycleError::Io { source } => write!(f, "component management IO failure: {source}"),
@@ -58,7 +85,7 @@ impl std::fmt::Display for LifecycleError {
 impl std::error::Error for LifecycleError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            LifecycleError::Spawn { source } | LifecycleError::Io { source } => Some(source),
+            LifecycleError::Spawn { source, .. } | LifecycleError::Io { source } => Some(source),
             _ => None,
         }
     }
@@ -230,9 +257,11 @@ pub async fn spawn_component(
         }
     }
 
-    let mut child = command
-        .spawn()
-        .map_err(|source| LifecycleError::Spawn { source })?;
+    let mut child = command.spawn().map_err(|source| LifecycleError::Spawn {
+        source,
+        program: program.clone(),
+        args: launch.args.clone(),
+    })?;
     let pid = child.id();
 
     // Hand the output pipes to dedicated reader tasks right away: starting
@@ -295,10 +324,11 @@ pub async fn spawn_component(
     };
     tokio::spawn(supervise(child, shutdown, stop_rx, ctx));
     log::info!(
-        "component spawned: {} (ns={} v={} pid={pid:?} endpoint={endpoint})",
+        "component spawned: {} (ns={} v={} pid={pid:?} endpoint={endpoint} program={})",
         manifest.id,
         manifest.namespace,
-        manifest.version
+        manifest.version,
+        program.display()
     );
     Ok(())
 }
@@ -408,17 +438,29 @@ pub(crate) async fn wait_until_healthy(
     timeout: Duration,
 ) -> Result<(), LifecycleError> {
     let deadline = Instant::now() + timeout;
+    // Diagnostics carried into the timeout error: the outcome of the most
+    // recent probe. The loop body always assigns it before the deadline
+    // check, so no sentinel initialization is needed.
+    let mut last_probe;
     loop {
         match probe_health(endpoint, token).await {
             Ok(Some(id)) if id == expect_id => return Ok(()),
-            Ok(other) => log::debug!("health not ready yet (response: {other:?}), keep polling"),
-            Err(e) => log::debug!(
-                "health probe connection failed (the component may not be listening yet): {e}"
-            ),
+            Ok(other) => {
+                last_probe = format!("health responded {other:?} (expected id {expect_id:?})");
+                log::debug!("health not ready yet (response: {other:?}), keep polling");
+            }
+            Err(e) => {
+                last_probe = format!("connection failed: {e}");
+                log::debug!(
+                    "health probe connection failed (the component may not be listening yet): {e}"
+                );
+            }
         }
         if Instant::now() >= deadline {
             return Err(LifecycleError::HealthTimeout {
                 id: expect_id.to_string(),
+                endpoint: endpoint.to_string(),
+                last_probe,
             });
         }
         tokio::time::sleep(HEALTH_INTERVAL).await;
@@ -1164,6 +1206,88 @@ mod tests {
         assert!(
             matches!(endpoint, Endpoint::Uds { .. }),
             "a manifest without a transport declaration keeps the platform default"
+        );
+    }
+
+    // ---------- stdout capture → component log file → read back ----------
+
+    /// The full capture chain with a real child process: spawn's piped
+    /// stdout lands in `{data_root}/logs/{id}.log`, and the management
+    /// page's read_component_log returns it (tail semantics included). The
+    /// component never opens a health endpoint, so the spawn ends in the
+    /// probe-timeout reclaim — the reader tasks start before the probe (by
+    /// contract), so the marker must be on disk once the pipes close.
+    /// `exec sleep` replaces the shell, so start_kill reaps the actual
+    /// sleep: no orphan lingers holding the pipe open past the assertion.
+    #[tokio::test]
+    async fn spawn_captures_output_and_read_component_log_returns_it() {
+        use crate::AppState;
+        use crate::commands::read_component_log_core;
+        use crate::registry::{RegistryEntry, persist_entry_sync};
+
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let layout = DataLayout::clone(&state.layout);
+        std::fs::create_dir_all(layout.component_dir("logger")).unwrap();
+        let registry = Arc::new(Registry::new());
+        let m = Arc::new(manifest(
+            "logger",
+            "loggerns",
+            "/bin/sh",
+            &["-c", "echo marker-log-line; exec sleep 30"],
+        ));
+
+        // /bin/sh has no /health: the spawn ends in the reclaim, but the
+        // piped stdout reader must have flushed the marker.
+        let result = spawn_component(
+            &layout,
+            &registry,
+            Arc::clone(&m),
+            layout.component_dir("logger"),
+            Duration::from_millis(600),
+            None,
+        )
+        .await;
+        assert!(matches!(result, Err(LifecycleError::HealthTimeout { .. })));
+
+        // The drain task flushes asynchronously: poll until the marker lands.
+        let log_path = layout.component_log_file("logger");
+        let mut content = String::new();
+        for _ in 0..40 {
+            content = tokio::fs::read_to_string(&log_path)
+                .await
+                .unwrap_or_default();
+            if content.contains("marker-log-line") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            content.contains("marker-log-line"),
+            "the captured log must contain the child's stdout marker (got {content:?})"
+        );
+
+        // Management-page read path: the on-disk registration gate, then the
+        // captured content, then the tail truncation.
+        let entry = RegistryEntry::installed((*m).clone());
+        persist_entry_sync(&layout, &entry).unwrap();
+        let logged = read_component_log_core(&state, "logger", None)
+            .await
+            .expect("a registered component's log must be readable");
+        // The file carries per-line trailing newlines (append form); the
+        // read path returns the line content without the trailing blank.
+        assert_eq!(
+            logged,
+            content.trim_end(),
+            "read_component_log returns the captured content verbatim"
+        );
+        let tail_one = read_component_log_core(&state, "logger", Some(1))
+            .await
+            .unwrap();
+        assert_eq!(
+            tail_one,
+            content.trim_end().lines().last().unwrap(),
+            "tail=1 keeps only the final line"
         );
     }
 }

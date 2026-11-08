@@ -121,6 +121,10 @@ pub(crate) async fn launch_with_transition(
     workdir: PathBuf,
 ) -> Result<(), lifecycle::LifecycleError> {
     let id = manifest.id.clone();
+    // Cloned before the manifest moves into spawn_component: the failure log
+    // below must carry the binary path on its own (the lifecycle error for a
+    // health timeout cannot — it never gets that far into the launch flow).
+    let launch_program = manifest.launch.as_ref().map(|l| l.command.clone());
     let policy = config_plane::load_meta(&state.layout, &id)
         .await
         .map(|m| m.launch_policy)
@@ -164,7 +168,10 @@ pub(crate) async fn launch_with_transition(
         Err(e) => {
             // Failure writes back the settled state (ready: the caller has
             // necessarily passed the needs-config gate)
-            log::error!("failed to spawn component {id}: {e}");
+            log::error!(
+                "failed to spawn component {id} (program={}): {e}",
+                launch_program.as_deref().unwrap_or("<none>")
+            );
             if let Err(e) = config_plane::save_meta(
                 &state.layout,
                 &id,
@@ -183,8 +190,13 @@ pub(crate) async fn launch_with_transition(
 }
 
 async fn launch(state: &AppState, manifest: Arc<ComponentManifest>, workdir: PathBuf) {
+    let launch_program = manifest.launch.as_ref().map(|l| l.command.clone());
+    let id = manifest.id.clone();
     if let Err(e) = launch_with_transition(state, manifest, workdir).await {
-        log::error!("component spawn failed, skipping: {e}");
+        log::error!(
+            "component spawn failed, skipping (id={id} program={}): {e}",
+            launch_program.as_deref().unwrap_or("<none>")
+        );
     }
 }
 

@@ -324,13 +324,25 @@ pub async fn gateway_handler(State(state): State<Arc<AppState>>, req: Request) -
     }
     let forward_req = hyper::Request::from_parts(parts, body);
 
+    // Captured before the request moves into forward(): the failure log and
+    // the 502 body must name the dial target on their own ("which component
+    // endpoint, which method, which path").
+    let method = forward_req.method().clone();
+    let target_path = forward_req.uri().path().to_owned();
     match forward(&snapshot.endpoint, forward_req, is_ws, inbound_upgrade).await {
         Ok(res) => res,
         Err(e) => {
-            log::warn!("component forwarding failed (ns={namespace}): {e}");
+            log::warn!(
+                "component forwarding failed (ns={namespace} {} {target_path} endpoint={}): {e}",
+                method,
+                snapshot.endpoint
+            );
             error_response(
                 StatusCode::BAD_GATEWAY,
-                &format!("component unreachable: {e}"),
+                &format!(
+                    "component unreachable ({} {target_path} endpoint={}): {e}",
+                    method, snapshot.endpoint
+                ),
             )
         }
     }
