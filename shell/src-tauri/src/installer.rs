@@ -176,6 +176,69 @@ async fn restore_config_backup(
     }
 }
 
+/// Whether an IO error is a transient file lock rather than a real
+/// filesystem failure. Windows implementation: antivirus (Defender) or the
+/// OS briefly holds a freshly executed binary — the component process is
+/// already confirmed exited at every call site, so the lock is expected to
+/// clear within milliseconds. ERROR_SHARING_VIOLATION (32) /
+/// ERROR_ACCESS_DENIED (5).
+#[cfg(windows)]
+fn is_transient_file_lock(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(32 | 5))
+}
+
+/// Whether an IO error is a transient file lock rather than a real
+/// filesystem failure. Unix implementation for symmetry: EBUSY (14) /
+/// ETXTBSY (26) — the classic "replace a binary that is still mapped"
+/// errno pair.
+#[cfg(unix)]
+fn is_transient_file_lock(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(14 | 26))
+}
+
+/// Fixed retry schedule for transient file locks: 8 attempts, 250 ms apart
+/// (~2 s total window — long enough for an antivirus scan lock to clear,
+/// short enough not to stall the update flow noticeably).
+const FILE_LOCK_ATTEMPTS: u32 = 8;
+const FILE_LOCK_RETRY_DELAY_MS: u64 = 250;
+
+/// Run `op` with a bounded retry on transient file-lock errors (see
+/// [is_transient_file_lock]). Non-transient errors fail immediately with the
+/// original error; exhausted retries surface an error carrying the operation
+/// description, the target path and a hint that retrying the update in a
+/// moment usually succeeds (the underlying ErrorKind is preserved).
+async fn with_file_lock_retry<T, F, Fut>(what: &str, path: &Path, mut op: F) -> std::io::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = std::io::Result<T>>,
+{
+    let mut attempt: u32 = 0;
+    loop {
+        attempt += 1;
+        match op().await {
+            Ok(value) => return Ok(value),
+            Err(err) if is_transient_file_lock(&err) && attempt < FILE_LOCK_ATTEMPTS => {
+                log::debug!(
+                    "transient file lock on {what} ({}), retrying ({attempt}/{FILE_LOCK_ATTEMPTS}) in {FILE_LOCK_RETRY_DELAY_MS}ms: {err}",
+                    path.display()
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(FILE_LOCK_RETRY_DELAY_MS))
+                    .await;
+            }
+            Err(err) if is_transient_file_lock(&err) => {
+                return Err(std::io::Error::new(
+                    err.kind(),
+                    format!(
+                        "{what} ({}): file lock retries exhausted after {attempt} attempts: {err} — likely held by antivirus or another process; retrying the update in a moment usually succeeds",
+                        path.display()
+                    ),
+                ));
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
 async fn install_inner(
     zip_path: &Path,
     layout: &DataLayout,
@@ -271,7 +334,12 @@ async fn install_inner(
         // cannot express the HRTB (lifetime may not live long enough);
         // calling the async fn directly has no such issue with the argument
         // borrows
-        if let Err(source) = tokio::fs::rename(&target, &replaced).await {
+        if let Err(source) =
+            with_file_lock_retry("move the old install directory aside", &target, || {
+                tokio::fs::rename(&target, &replaced)
+            })
+            .await
+        {
             // Moving the old directory away failed: restore the config backup
             // to its original place (no install happened; the original
             // directory's shape must be intact)
@@ -288,12 +356,22 @@ async fn install_inner(
                 source,
             });
         }
-        if let Err(source) = tokio::fs::rename(work, &target).await {
+        if let Err(source) =
+            with_file_lock_retry("move the new install into place", &target, || {
+                tokio::fs::rename(work, &target)
+            })
+            .await
+        {
             // Mid-way failure, move back: restore the old version from
             // replaced to target, never leaving a "target missing" state
             // (if moving back fails it can only be logged — a missing target
             // is an environment-level failure requiring manual intervention)
-            if let Err(e) = tokio::fs::rename(&replaced, &target).await {
+            if let Err(e) =
+                with_file_lock_retry("move the replacement back into place", &target, || {
+                    tokio::fs::rename(&replaced, &target)
+                })
+                .await
+            {
                 log::error!(
                     "failed to move the replacement back into place ({} → {}): {e}",
                     replaced.display(),
@@ -319,19 +397,26 @@ async fn install_inner(
         // (registry registration follows the new manifest); the leftover
         // directory waits for the backstop cleanup of the next same-id
         // replacement
-        if let Err(e) = tokio::fs::remove_dir_all(&replaced).await {
+        if let Err(e) =
+            with_file_lock_retry("clean up the old install directory", &replaced, || {
+                tokio::fs::remove_dir_all(&replaced)
+            })
+            .await
+        {
             log::warn!(
                 "failed to clean up the old directory (does not affect the install outcome, {}): {e}",
                 replaced.display()
             );
         }
     } else {
-        tokio::fs::rename(work, &target)
-            .await
-            .map_err(|source| InstallError::Io {
-                path: target.display().to_string(),
-                source,
-            })?;
+        with_file_lock_retry("move the new install into place", &target, || {
+            tokio::fs::rename(work, &target)
+        })
+        .await
+        .map_err(|source| InstallError::Io {
+            path: target.display().to_string(),
+            source,
+        })?;
     }
     // Restore the component config (upgrade success path): overwrites the
     // same-named placeholder file in the new package
@@ -836,5 +921,165 @@ mod tests {
 
         let result = install(&zip_path, &layout).await;
         assert!(matches!(result, Err(InstallError::Verify { .. })));
+    }
+
+    // --- transient file lock detection -----------------------------------
+
+    #[cfg(windows)]
+    #[test]
+    fn transient_detection_windows_codes() {
+        // ERROR_SHARING_VIOLATION (32) / ERROR_ACCESS_DENIED (5) are
+        // transient locks
+        assert!(is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            32
+        )));
+        assert!(is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            5
+        )));
+        // Codes outside the set are real failures
+        assert!(!is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            14
+        )));
+        assert!(!is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            26
+        )));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn transient_detection_unix_codes() {
+        // EBUSY (14) / ETXTBSY (26) are transient locks
+        assert!(is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            14
+        )));
+        assert!(is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            26
+        )));
+        // Codes outside the set are real failures
+        assert!(!is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            32
+        )));
+        assert!(!is_transient_file_lock(&std::io::Error::from_raw_os_error(
+            5
+        )));
+    }
+
+    #[test]
+    fn transient_detection_non_os_error() {
+        // Errors without an OS code (custom messages) are never transient
+        // locks
+        let err = std::io::Error::other("not an os error");
+        assert!(err.raw_os_error().is_none());
+        assert!(!is_transient_file_lock(&err));
+    }
+
+    // --- retry helper ------------------------------------------------------
+    // The schedule is a fixed constant (no injectable clock); these tests run
+    // against real sleeps — the two-shaped cases below stay well under ~2.5 s
+    // combined, acceptable for the suite.
+
+    /// The current platform's transient lock code (EBUSY on unix,
+    /// ERROR_ACCESS_DENIED on windows).
+    #[cfg(unix)]
+    const TEST_TRANSIENT_CODE: i32 = 14; // EBUSY
+    #[cfg(windows)]
+    const TEST_TRANSIENT_CODE: i32 = 5; // ERROR_ACCESS_DENIED
+
+    #[tokio::test]
+    async fn retry_succeeds_after_transient_failures() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let calls = AtomicU32::new(0);
+        let result: std::io::Result<()> = with_file_lock_retry(
+            "test op",
+            Path::new("/tmp/superlive-retry-test"),
+            || async {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                if n < 2 {
+                    Err(std::io::Error::from_raw_os_error(TEST_TRANSIENT_CODE))
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "should succeed once the lock clears: {result:?}"
+        );
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            3,
+            "two failed attempts + one success"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_exhaustion_reports_context() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let calls = AtomicU32::new(0);
+        let result: std::io::Result<()> = with_file_lock_retry(
+            "test op",
+            Path::new("/tmp/superlive-retry-test"),
+            || async {
+                let _ = calls.fetch_add(1, Ordering::SeqCst);
+                Err(std::io::Error::from_raw_os_error(TEST_TRANSIENT_CODE))
+            },
+        )
+        .await;
+        let err = result.expect_err("exhausted retries must fail");
+        let message = err.to_string();
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            FILE_LOCK_ATTEMPTS,
+            "every attempt should be made before giving up"
+        );
+        assert!(message.contains("retries exhausted"), "message: {message}");
+        assert!(
+            message.contains("/tmp/superlive-retry-test"),
+            "message must carry the target path: {message}"
+        );
+        assert!(
+            message.contains("antivirus"),
+            "message must carry the retry hint: {message}"
+        );
+        // The underlying error is preserved: same ErrorKind, OS code still
+        // visible in the text
+        assert_eq!(
+            err.kind(),
+            std::io::Error::from_raw_os_error(TEST_TRANSIENT_CODE).kind()
+        );
+        assert!(
+            message.contains("os error"),
+            "underlying error text should be embedded: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_passes_through_non_transient_errors() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let calls = AtomicU32::new(0);
+        let result: std::io::Result<()> = with_file_lock_retry(
+            "test op",
+            Path::new("/tmp/superlive-retry-test"),
+            || async {
+                let _ = calls.fetch_add(1, Ordering::SeqCst);
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "gone for good",
+                ))
+            },
+        )
+        .await;
+        let err = result.expect_err("non-transient errors must fail immediately");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "no retries for non-transient errors"
+        );
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        assert!(
+            err.to_string().contains("gone for good"),
+            "original error must be preserved verbatim: {err}"
+        );
     }
 }
