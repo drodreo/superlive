@@ -91,6 +91,18 @@ const zh = {
   "mgr.installedPrompt":
     "组件「{{name}}」安装完成。是否立即启动？存在未完成必填配置的组件会先进入配置页。",
 
+  // Management table's compact action buttons: the visible label is short,
+  // the full wording lives on the title attribute (hover hint)
+
+  // Component log viewer (the shell captures stdout/stderr into
+  // {data}/logs/{id}.log)
+  "mgr.log": "日志",
+  "log.title": "组件日志 {{id}}",
+  "log.empty": "组件尚未产生日志",
+  "log.refresh": "刷新",
+  "log.close": "关闭",
+  "log.readFailed": "读取日志失败: {{error}}",
+
   // Launch options dialog
   "launch.title": "启动选项",
   "launch.later": "稍后再说",
@@ -303,6 +315,18 @@ const en: Record<ShellKey, string> = {
   "mgr.startNow": "Start now",
   "mgr.installedPrompt":
     '"{{name}}" installed. Start it now? Components with unfinished required configuration go to the configuration page first.',
+
+  // Management table's compact action buttons: the visible label is short,
+  // the full wording lives on the title attribute (hover hint)
+
+  // Component log viewer (the shell captures stdout/stderr into
+  // {data}/logs/{id}.log)
+  "mgr.log": "Log",
+  "log.title": "Component log: {{id}}",
+  "log.empty": "The component has not produced any logs yet.",
+  "log.refresh": "Refresh",
+  "log.close": "Close",
+  "log.readFailed": "Failed to read the log: {{error}}",
 
   // Launch options dialog
   "launch.title": "Launch options",

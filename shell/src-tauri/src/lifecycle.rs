@@ -6,8 +6,9 @@
 //! health check share one endpoint) →
 //! stop: SIGTERM (unix, nix safe wrapper) / stdin `shutdown` (windows
 //! fallback) →
-//! force kill after the grace timeout. stdout/stderr are inherited from the
-//! shell process (log aggregation deferred to module 3, second stage).
+//! force kill after the grace timeout. stdout/stderr are captured into the
+//! component's log file (`{logs_dir}/{id}.log`, append; the management page
+//! reads it back via the read_component_log command).
 
 use crate::config::{DataLayout, HEALTH_INTERVAL, STOP_GRACE};
 use crate::registry::{Registry, RunningComponent};
@@ -171,7 +172,11 @@ pub async fn spawn_component(
     // stdin: unix passes null (the unix component path does not read stdin; a
     // dangling pipe serves no purpose);
     // windows keeps the pipe — slsdk serve's stdin `shutdown` fallback
-    // channel depends on it
+    // channel depends on it.
+    // stdout/stderr: captured into the component's log file (a piped stream
+    // MUST be drained continuously — an unread pipe fills its fixed kernel
+    // buffer and deadlocks the writing component — so each pipe gets a
+    // dedicated reader task below).
     #[cfg(unix)]
     let mut command = {
         let mut c = Command::new(&program);
@@ -186,6 +191,8 @@ pub async fn spawn_component(
     };
     command
         .args(&launch.args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .env(ENV_ENDPOINT, endpoint.to_string())
         .env(ENV_TOKEN, token.as_str())
         .current_dir(&workdir);
@@ -222,6 +229,14 @@ pub async fn spawn_component(
         .spawn()
         .map_err(|source| LifecycleError::Spawn { source })?;
     let pid = child.id();
+
+    // Hand the output pipes to dedicated reader tasks right away: starting
+    // them *before* the health probe means even a probe-failure reclaim
+    // leaves the component's own output on disk (exactly the diagnostics
+    // surface the capture exists for). Each task drains until EOF (process
+    // exit), so no pipe buffer can fill and deadlock the component.
+    let log_path = layout.component_log_file(&manifest.id);
+    spawn_pipe_reader_tasks(&mut child, log_path);
 
     // Readiness probe failed: the component did not become ready in time —
     // cannot leave a wild process, reclaim then report the error
@@ -281,6 +296,68 @@ pub async fn spawn_component(
         manifest.version
     );
     Ok(())
+}
+
+/// Drain one output pipe (stdout or stderr) into the component's log file,
+/// appending line by line until EOF (the process exited and both pipe ends
+/// closed). The component's own output already carries timestamps; no second
+/// prefix is added. Both streams append to the same file (v1 keeps a single
+/// log per component); append-mode writes are per-write atomic, so the
+/// worst-case interleaving is line-level — acceptable for a diagnostics
+/// surface. Write failures (disk full, directory removed) stop the drain
+/// quietly: the pipe is then closed and the component may fail on its next
+/// write, but blocking the shell's task pool to keep reading would be worse.
+async fn pipe_to_log_file<R>(pipe: R, log_path: PathBuf)
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+
+    let mut file = match tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .await
+    {
+        Ok(f) => f,
+        Err(e) => {
+            log::warn!("failed to open the component log file {log_path:?}: {e}");
+            return;
+        }
+    };
+    let mut lines = tokio::io::BufReader::new(pipe).lines();
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) => {
+                if file.write_all(line.as_bytes()).await.is_err()
+                    || file.write_all(b"\n").await.is_err()
+                {
+                    log::warn!(
+                        "failed to write the component log file {log_path:?}; capture stops"
+                    );
+                    return;
+                }
+            }
+            Ok(None) => return, // EOF: the component process has exited
+            Err(e) => {
+                log::warn!("failed to read the component's output pipe ({log_path:?}): {e}");
+                return;
+            }
+        }
+    }
+}
+
+/// Take both output pipes off the freshly spawned child and hand each to its
+/// own reader task. Must be called promptly after spawn and before any
+/// blocking wait: an undrained pipe fills its fixed kernel buffer and
+/// deadlocks the writing component.
+fn spawn_pipe_reader_tasks(child: &mut Child, log_path: PathBuf) {
+    if let Some(stdout) = child.stdout.take() {
+        tokio::spawn(pipe_to_log_file(stdout, log_path.clone()));
+    }
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(pipe_to_log_file(stderr, log_path));
+    }
 }
 
 /// Socket cleanup path after the component crashes and exits (unix UDS;

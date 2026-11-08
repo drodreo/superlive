@@ -25,6 +25,7 @@ import {
   installComponent,
   listComponents,
   performUpdate,
+  readComponentLog,
   startComponent,
   stopComponent,
   uninstallComponent,
@@ -249,6 +250,32 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
     }
   };
 
+  // ---------- Component log viewer (the shell's stdout/stderr capture) ----------
+
+  // Open viewer state: which component + the fetched tail content + a read
+  // error (shown in-place; the modal stays open so the context is kept).
+  // Read-only: deliberately not gated by the busy flag — log inspection must
+  // not fight with, nor be blocked by, start/stop/update actions.
+  const [logView, setLogView] = useState<{
+    id: string;
+    content: string;
+    error: string | null;
+  } | null>(null);
+
+  const fetchLog = useCallback(async (id: string) => {
+    try {
+      const content = await firstValueFrom(readComponentLog(id));
+      setLogView({ id, content, error: null });
+    } catch (e) {
+      setLogView({ id, content: "", error: String(e) });
+    }
+  }, []);
+
+  const openLog = (id: string) => {
+    setLogView({ id, content: "", error: null });
+    void fetchLog(id);
+  };
+
   // Post-install "Start now": the start gate per the lifecycle contract —
   // needs-config is routed to the config page,
   // the rest (zero-config ready / stopped) go to the launch options dialog
@@ -415,6 +442,11 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                       )}
                     </>
                   )}
+                  {/* Log viewer entry: the shell captures the component's
+                      stdout/stderr (read-only, no busy gating) */}
+                  <button type="button" onClick={() => openLog(c.id)}>
+                    {t("mgr.log")}
+                  </button>{" "}
                   {/* Update flow entry: only components declaring an update source participate */}
                   {c.update != null && (
                     <button
@@ -522,6 +554,38 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
             })}
           </p>
           {updateDialog.notes && <p>{updateDialog.notes}</p>}
+        </Modal>
+      )}
+
+      {/* Component log viewer: the shell's stdout/stderr capture tail
+          (monospace, scrollable; refresh re-reads the file) */}
+      {logView && (
+        <Modal
+          title={t("log.title", { id: logView.id })}
+          footer={
+            <>
+              <button type="button" onClick={() => void fetchLog(logView.id)}>
+                {t("log.refresh")}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => setLogView(null)}
+              >
+                {t("log.close")}
+              </button>
+            </>
+          }
+        >
+          {logView.error ? (
+            <p className="log-empty">
+              {t("log.readFailed", { error: logView.error })}
+            </p>
+          ) : logView.content ? (
+            <pre className="log-viewer">{logView.content}</pre>
+          ) : (
+            <p className="log-empty">{t("log.empty")}</p>
+          )}
         </Modal>
       )}
 

@@ -205,6 +205,14 @@ async fn uninstall_core(state: &AppState, id: &str) -> Result<(), String> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(format!("failed to remove the component meta: {e}")),
     }
+    // 4. The captured log file goes with the data (uninstall deletes all of
+    //    the component's data; keeping it would also append stale lines onto
+    //    a same-id reinstall).
+    match tokio::fs::remove_file(state.layout.component_log_file(id)).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("failed to remove the component log: {e}")),
+    }
 
     log::info!(
         "component uninstalled: {id} (ns={namespace}, source={:?})",
@@ -1197,10 +1205,71 @@ fn scaffold_and_read_version(
     Ok((scaffolded, version))
 }
 
+/// Default tail size for read_component_log when the frontend does not
+/// specify one.
+const LOG_DEFAULT_TAIL: usize = 500;
+
+/// Pure tail helper of read_component_log: keep the last `n` lines of the
+/// content (kept testable — see the tests module).
+fn tail_lines(content: &str, n: usize) -> String {
+    if n == 0 {
+        return String::new();
+    }
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines.len().saturating_sub(n);
+    lines[start..].join("\n")
+}
+
+/// Read the tail of a component's captured stdout/stderr log
+/// (logs/{id}.log, written by the lifecycle's spawn capture). A missing file
+/// (the component never ran since install, or was uninstalled and
+/// reinstalled) resolves to the empty string — the frontend shows its "no
+/// logs yet" hint for it. `tail` caps the returned line count (defaults to
+/// [`LOG_DEFAULT_TAIL`]).
+#[tauri::command]
+pub async fn read_component_log(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    tail: Option<usize>,
+) -> Result<String, String> {
+    // Same authority gate as start/stop: the on-disk registration must exist
+    // (the management page only offers the log entry for installed ids, so
+    // this is defense, not a real path).
+    find_entry(&state, &id).await?;
+    let path = state.layout.component_log_file(&id);
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(content) => content,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(format!("failed to read the component log: {e}")),
+    };
+    Ok(tail_lines(&content, tail.unwrap_or(LOG_DEFAULT_TAIL)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config_plane::ComponentMeta;
+
+    // ---------- read_component_log's tail helper ----------
+
+    #[test]
+    fn tail_lines_keeps_the_last_n_lines() {
+        let content = "l1\nl2\nl3\nl4\nl5";
+        assert_eq!(tail_lines(content, 2), "l4\nl5");
+        // More than the total: everything comes back, verbatim
+        assert_eq!(tail_lines(content, 50), content);
+        // Exactly the total
+        assert_eq!(tail_lines(content, 5), content);
+    }
+
+    #[test]
+    fn tail_lines_edge_shapes() {
+        assert_eq!(tail_lines("", 10), "");
+        assert_eq!(tail_lines("only\n", 1), "only");
+        assert_eq!(tail_lines("a\nb\nc", 0), "");
+        // Trailing newline does not produce a phantom empty tail line
+        assert_eq!(tail_lines("a\nb\n", 1), "b");
+    }
 
     fn base_args(id: &str, ns: &str, shape: &str, target: &Path) -> CreateComponentArgs {
         CreateComponentArgs {
