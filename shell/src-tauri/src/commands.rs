@@ -334,6 +334,19 @@ fn platform_package_key() -> Result<&'static str, String> {
     package_key_for(std::env::consts::OS, std::env::consts::ARCH)
 }
 
+/// Full error source chain: the top-level reqwest display ("error sending
+/// request for url") hides whether the death was DNS, connect refused,
+/// a proxy failure, or a timeout — the chain names it.
+fn err_chain(e: &reqwest::Error) -> String {
+    let mut chain = e.to_string();
+    let mut src = std::error::Error::source(e);
+    while let Some(s) = src {
+        chain.push_str(&format!(": {s}"));
+        src = s.source();
+    }
+    chain
+}
+
 /// The update-flow HTTP client: 15s total timeout per request, rustls only
 /// (no native-tls system dependency on any platform).
 fn update_http_client() -> Result<reqwest::Client, String> {
@@ -349,7 +362,7 @@ async fn fetch_text(client: &reqwest::Client, url: &str, what: &str) -> Result<S
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("failed to fetch {what} from {url}: {e}"))?;
+        .map_err(|e| format!("failed to fetch {what} from {url}: {}", err_chain(&e)))?;
     let status = response.status();
     if !status.is_success() {
         return Err(format!("failed to fetch {what} from {url}: HTTP {status}"));
@@ -366,7 +379,7 @@ async fn fetch_bytes(client: &reqwest::Client, url: &str, what: &str) -> Result<
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("failed to fetch {what} from {url}: {e}"))?;
+        .map_err(|e| format!("failed to fetch {what} from {url}: {}", err_chain(&e)))?;
     let status = response.status();
     if !status.is_success() {
         return Err(format!("failed to fetch {what} from {url}: HTTP {status}"));
