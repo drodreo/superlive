@@ -7,6 +7,7 @@
 //! ├── components/{id}/   install directory (Plane B files; the static server mounts only its ui/ subdirectory)
 //! ├── sockets/{id}.sock  component UDS listen path (unix)
 //! ├── registry/{id}.json manifest persistence (S5 decision: the manifest is kept outside the install directory)
+//! ├── logs/{id}.log      component stdout/stderr capture (one append-only file per component)
 //! └── tmp/               install temp workspace (same disk as components, guaranteeing atomic rename)
 //! ```
 
@@ -56,6 +57,13 @@ impl DataLayout {
         self.root.join("registry")
     }
 
+    /// Directory holding one append-only log file per component
+    /// (`{id}.log`): the captured stdout/stderr stream of the component
+    /// process (see lifecycle's spawn).
+    pub fn logs_dir(&self) -> PathBuf {
+        self.root.join("logs")
+    }
+
     pub fn tmp_dir(&self) -> PathBuf {
         self.root.join("tmp")
     }
@@ -79,6 +87,13 @@ impl DataLayout {
         self.registry_dir().join(format!("{id}.json"))
     }
 
+    /// Component log capture file (logs/{id}.log). id is constrained by
+    /// manifest.validate to letters/digits/hyphens, so it cannot introduce
+    /// path separators or traversal forms (same argument as socket_path).
+    pub fn component_log_file(&self, id: &str) -> PathBuf {
+        self.logs_dir().join(format!("{id}.log"))
+    }
+
     /// Component config file (config.toml inside the install directory): the
     /// persistent form of the configuration-plane contract and its single
     /// source of truth. The component reads/writes the same file via a
@@ -98,13 +113,14 @@ impl DataLayout {
         self.registry_dir().join(format!("{id}.meta"))
     }
 
-    /// Ensure the four subdirectories exist. Call only in a synchronous
+    /// Ensure the five subdirectories exist. Call only in a synchronous
     /// context (shell startup); async paths use tokio::fs.
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
         for dir in [
             self.components_dir(),
             self.sockets_dir(),
             self.registry_dir(),
+            self.logs_dir(),
             self.tmp_dir(),
         ] {
             std::fs::create_dir_all(dir)?;
@@ -119,6 +135,7 @@ impl DataLayout {
             self.components_dir(),
             self.sockets_dir(),
             self.registry_dir(),
+            self.logs_dir(),
             self.tmp_dir(),
         ] {
             tokio::fs::create_dir_all(dir).await?;
