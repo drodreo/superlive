@@ -400,7 +400,6 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                     <button
                       type="button"
                       disabled={busy}
-                      title={t("mgr.actGoConfig")}
                       onClick={() => navigate(`/config/${c.id}`)}
                     >
                       {t("mgr.goConfig")}
@@ -411,7 +410,6 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                       <button
                         type="button"
                         disabled={busy}
-                        title={t("mgr.actConfigure")}
                         onClick={() => navigate(`/config/${c.id}`)}
                       >
                         {t("mgr.configure")}
@@ -420,7 +418,6 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                         <button
                           type="button"
                           disabled={busy}
-                          title={t("mgr.actStop")}
                           onClick={() =>
                             void run(stopComponent(c.id), "mgr.stopRequested", {
                               id: c.id,
@@ -434,7 +431,6 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                         <button
                           type="button"
                           disabled={busy}
-                          title={t("mgr.actStart")}
                           onClick={() =>
                             void run(startComponent(c.id), "mgr.started", {
                               id: c.id,
@@ -448,11 +444,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                   )}
                   {/* Log viewer entry: the shell captures the component's
                       stdout/stderr (read-only, no busy gating) */}
-                  <button
-                    type="button"
-                    title={t("mgr.actLogs")}
-                    onClick={() => openLog(c.id)}
-                  >
+                  <button type="button" onClick={() => openLog(c.id)}>
                     {t("mgr.log")}
                   </button>{" "}
                   {/* Update flow entry: only components declaring an update source participate */}
@@ -460,7 +452,6 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                     <button
                       type="button"
                       disabled={busy}
-                      title={t("mgr.actUpdate")}
                       onClick={() => void beginUpdateFlow(c.id)}
                     >
                       {t("upd.check")}
@@ -470,7 +461,6 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                     type="button"
                     className="danger"
                     disabled={busy}
-                    title={t("mgr.actUninstall")}
                     onClick={async () => {
                       const confirmKey =
                         c.source === "dev"

@@ -460,7 +460,7 @@ body {
 }
 
 .comp-table button {
-  padding: 4px 8px;
+  padding: 4px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--bg-panel);
@@ -468,8 +468,18 @@ body {
   cursor: pointer;
 }
 
+/* The actions column shrinks to its content: width 100% + auto layout
+   otherwise hands the leftover table width to the trailing column,
+   which is what made the bar "too wide" — 1% + nowrap collapses it back
+   to exactly the buttons' width, the surplus going to the content columns */
+.comp-table th:last-child,
+.comp-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
 .comp-table button + button {
-  margin-left: 4px;
+  margin-left: 6px;
 }
 
 .comp-table button.danger {
