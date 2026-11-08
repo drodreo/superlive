@@ -57,6 +57,7 @@ toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 # Update feed semver comparison (strict greater = an update is available)
 semver = "1"
+tauri-plugin-log = "2.9.2"
 
 # unix graceful exit sends SIGTERM (tokio only has SIGKILL-grade start_kill;
 # nix is the safe wrapper, no unsafe)

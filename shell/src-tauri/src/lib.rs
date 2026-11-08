@@ -88,6 +88,24 @@ pub fn run() {
             // (Linux: ~/.local/share/<identifier>)
             let data_dir: PathBuf = app.path().app_data_dir()?;
             let mut state = AppState::new(data_dir)?;
+            // Attach the log sink as the first step after layout resolution so
+            // every shell-side diagnostic (gateway forwarding, health probe,
+            // spawn failures) lands in {data_root}/logs/shell.log next to the
+            // component logs — in GUI mode there is no console, so without
+            // this sink the log facade has no output at all.
+            app.handle().plugin(
+                tauri_plugin_log::Builder::new()
+                    .targets([
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
+                            path: state.layout.logs_dir(),
+                            file_name: Some("shell".into()),
+                        }),
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    ])
+                    .level(log::LevelFilter::Info)
+                    .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                    .build(),
+            )?;
             // Shell→UI push channel (component exit broadcast); tests keep None
             state.app = Some(app.handle().clone());
             log::info!("shell data directory: {}", state.layout.root().display());
