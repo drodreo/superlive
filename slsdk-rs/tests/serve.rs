@@ -41,6 +41,27 @@ fn test_manifest() -> ComponentManifest {
     .unwrap()
 }
 
+/// Same shape, but declaring a config section (an empty field list is fine —
+/// the mount precondition only looks at the declaration's presence).
+fn manifest_with_config_declaration() -> ComponentManifest {
+    serde_json::from_str(
+        r#"{
+        "id": "xatodo",
+        "version": "0.2.0",
+        "min_shell_version": "0.1.0",
+        "namespace": "todo",
+        "display_name": "XaTodo",
+        "ui": { "ui_type": "module", "entry": "assets/main.js" },
+        "menu": null,
+        "routes": [],
+        "launch": { "command": "xatodo-server", "args": [] },
+        "config": { "fields": [] },
+        "files": [ { "path": "xatodo-server", "sha256": "aa" } ]
+    }"#,
+    )
+    .unwrap()
+}
+
 // ---------- UDS connector for the hyper-util legacy client ----------
 // hyper-util does not ship a UDS connector; a newtype bypasses the orphan rule (Connection
 // is a foreign trait).
@@ -306,4 +327,38 @@ async fn uds_and_tcp_lifecycle_smoke() {
         "shutdown with a live subscriber took too long: {:?}",
         started.elapsed()
     );
+
+    // ===== Scenario 4: config declared but no integration → /config not mounted =====
+    // serve_with_events with a config declaration and None integration is
+    // the documented "component manages config itself" shape: the mount
+    // precondition (declaration AND integration) must not half-mount the
+    // endpoint. Explicit guard for the mount condition — the mounted
+    // GET/PUT behavior has its own e2e in tests/config.rs.
+    let info = slsdk_rs::serve_with_events(
+        Router::new(),
+        &manifest_with_config_declaration(),
+        None,
+        slsdk_rs::A2uiNotifier::new(),
+    )
+    .await
+    .unwrap();
+    let addr = match &info.endpoint {
+        Endpoint::Tcp { addr } => *addr,
+        other => panic!("standalone debug mode should be Tcp, got {other:?}"),
+    };
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    stream
+        .write_all(b"GET /config HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).await.unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    assert!(
+        text.starts_with("HTTP/1.1 404"),
+        "a config declaration without a ConfigIntegration must not mount /config, actual response: {text}"
+    );
+
+    info.shutdown();
+    info.wait().await.unwrap();
 }

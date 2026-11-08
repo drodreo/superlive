@@ -48,3 +48,11 @@ axum = "0.8"
 [[test]]
 name = "sigterm"
 harness = false
+
+# tests/shutdown.rs: same self-re-spawn pattern, guarding the other carrier
+# of the graceful-exit contract — the windows stdin `shutdown` line (zero
+# coverage before, sigterm.rs is unix-only) plus an independent unix SIGTERM
+# re-check against a real spawned child process.
+[[test]]
+name = "shutdown"
+harness = false

@@ -626,7 +626,18 @@ pub async fn write_component_config(
     id: String,
     values: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let entry = find_entry(&state, &id).await?;
+    write_component_config_core(&state, &id, values).await
+}
+
+/// Write path shared by the command surface and the tests (the branch
+/// semantics — running forwards / not-running writes / validation JSON —
+/// live here verbatim).
+async fn write_component_config_core(
+    state: &AppState,
+    id: &str,
+    values: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let entry = find_entry(state, id).await?;
     let config_path = registry::config_path_for(&state.layout, &entry);
 
     // Running: forward to the component's standard endpoint (the component
@@ -638,7 +649,14 @@ pub async fn write_component_config(
             .await
             .map_err(|e| e.to_string())?;
         let (status, body) =
-            config_plane::forward_config_put(&snapshot.endpoint, &snapshot.token, values).await?;
+            config_plane::forward_config_put(&snapshot.endpoint, &snapshot.token, values)
+                .await
+                .map_err(|e| {
+                    format!(
+                        "config PUT to component {id} ({}) failed: {e}",
+                        snapshot.endpoint
+                    )
+                })?;
         if status == axum::http::StatusCode::BAD_REQUEST {
             // Component validation failed: relay {"errors": {...}} verbatim
             // (the UI and the unstarted state parse it uniformly)
@@ -646,12 +664,13 @@ pub async fn write_component_config(
         }
         if !status.is_success() {
             return Err(format!(
-                "component config endpoint returned {status}: {}",
+                "component {id} config endpoint ({}) returned {status}: {}",
+                snapshot.endpoint,
                 String::from_utf8_lossy(&body)
             ));
         }
         let updated: serde_json::Value = serde_json::from_slice(&body)
-            .map_err(|e| format!("failed to parse the component config response: {e}"))?;
+            .map_err(|e| format!("failed to parse the config response of component {id}: {e}"))?;
         let new_values = updated
             .get("values")
             .and_then(|v| v.as_object())
@@ -669,7 +688,7 @@ pub async fn write_component_config(
             // Effective semantics: restart_required entries are applied by
             // the shell restarting the component (architecture.md
             // "Config read/write")
-            restart_running_component(&state, entry).await?;
+            restart_running_component(state, entry).await?;
         }
         return Ok(serde_json::json!({ "restart_required_changed": changed }));
     }
@@ -681,13 +700,18 @@ pub async fn write_component_config(
         Err(slsdk_rs::ConfigError::Validation(errors)) => {
             return Err(serde_json::json!({ "errors": errors }).to_string());
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => {
+            return Err(format!(
+                "failed to write the config file of component {id} ({}): {e}",
+                config_path.display()
+            ));
+        }
     }
     // Settled-state recompute and persist: with required complete,
     // needs-config → ready (gate opens)
     config_plane::reconcile_state(&state.layout, &entry.manifest, config_path)
         .await
-        .map_err(|e| format!("failed to persist the config state: {e}"))?;
+        .map_err(|e| format!("failed to persist the config state of component {id}: {e}"))?;
     Ok(serde_json::json!({ "restart_required_changed": false }))
 }
 
@@ -1245,15 +1269,25 @@ pub async fn read_component_log(
     id: String,
     tail: Option<usize>,
 ) -> Result<String, String> {
+    read_component_log_core(&state, &id, tail).await
+}
+
+/// Read path shared by the command surface and the tests (registration gate
+/// + log file lookup + tail truncation).
+pub(crate) async fn read_component_log_core(
+    state: &AppState,
+    id: &str,
+    tail: Option<usize>,
+) -> Result<String, String> {
     // Same authority gate as start/stop: the on-disk registration must exist
     // (the management page only offers the log entry for installed ids, so
     // this is defense, not a real path).
-    find_entry(&state, &id).await?;
-    let path = state.layout.component_log_file(&id);
+    find_entry(state, id).await?;
+    let path = state.layout.component_log_file(id);
     let content = match tokio::fs::read_to_string(&path).await {
         Ok(content) => content,
         Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(format!("failed to read the component log: {e}")),
+        Err(e) => return Err(format!("failed to read the component log of {id}: {e}")),
     };
     Ok(tail_lines(&content, tail.unwrap_or(LOG_DEFAULT_TAIL)))
 }
@@ -2093,5 +2127,461 @@ mod tests {
                 .join("superlive-update-deadapp-0.2.0.zip")
                 .exists()
         );
+    }
+
+    // ---------- perform_update with a live component process (real-process e2e) ----------
+
+    /// Locate the test-component helper binary (src/bin/test-component.rs).
+    /// CARGO_BIN_EXE_* is only set when building integration tests, and
+    /// `cargo test` does not put plain bin targets on its build plan (both
+    /// verified empirically), so a unit test cannot rely on either: the
+    /// helper is located through the cargo target layout (the test binary
+    /// lives at <target>/<profile>/deps/, the helper at <target>/<profile>/)
+    /// and built on a miss. Concurrent test threads are serialized by
+    /// cargo's own build lock; a fingerprint hit returns instantly.
+    fn test_component_bin() -> PathBuf {
+        let exe = std::env::current_exe().expect("the test binary path");
+        let profile_dir = exe
+            .parent()
+            .and_then(Path::parent)
+            .expect("the test binary's deps/ parent is the cargo profile dir")
+            .to_path_buf();
+        let name = if cfg!(windows) {
+            "test-component.exe"
+        } else {
+            "test-component"
+        };
+        let path = profile_dir.join(name);
+        if !path.exists() {
+            let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+            let status = std::process::Command::new(cargo)
+                .args(["build", "--bin", "test-component"])
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .status()
+                .expect("failed to spawn cargo for the test-component helper build");
+            assert!(
+                status.success(),
+                "building the test-component helper failed: {status}"
+            );
+        }
+        assert!(
+            path.exists(),
+            "the test-component helper is still missing after the build ({})",
+            path.display()
+        );
+        path
+    }
+
+    /// Build a live-component package zip: manifest with a launch declaration
+    /// (argv carries the generation's id/version) + the helper binary as the
+    /// single files entry. The zip entry carries the unix exec bit — the
+    /// installer restores it on unix, and a 0644 binary would fail to spawn.
+    fn make_live_zip(
+        id: &str,
+        ns: &str,
+        version: &str,
+        feed_url: &str,
+        bin_bytes: &[u8],
+    ) -> Vec<u8> {
+        let bin_name = if cfg!(windows) {
+            "test-component.exe"
+        } else {
+            "test-component"
+        };
+        let manifest = format!(
+            r#"{{
+            "id": "{id}",
+            "version": "{version}",
+            "min_shell_version": "0.1.0",
+            "namespace": "{ns}",
+            "display_name": "{id}",
+            "menu": null,
+            "routes": [],
+            "launch": {{ "command": "{bin_name}", "args": ["{id}", "{version}"] }},
+            "update": {{ "manifest_url": "{feed_url}" }},
+            "files": [ {{ "path": "{bin_name}", "sha256": "{}" }} ]
+        }}"#,
+            update_sha256_hex(bin_bytes)
+        );
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buf);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated)
+                .unix_permissions(0o755);
+            writer.start_file("manifest.json", options).unwrap();
+            std::io::Write::write_all(&mut writer, manifest.as_bytes()).unwrap();
+            writer.start_file(bin_name, options).unwrap();
+            std::io::Write::write_all(&mut writer, bin_bytes).unwrap();
+            writer.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    /// Probe the live component's /health and return the version it reports
+    /// (each generation reports the version from its own argv — the
+    /// process-level proof that the restarted process is the new package,
+    /// not just that some process is listening).
+    async fn probe_component_version(endpoint: &slsdk_rs::Endpoint, token: &str) -> Option<String> {
+        use http_body_util::BodyExt;
+        let stream = crate::gateway::connect_component(endpoint).await.ok()?;
+        let (mut sender, conn) = hyper::client::conn::http1::handshake(stream).await.ok()?;
+        tokio::spawn(async move {
+            let _ = conn.await;
+        });
+        let req = hyper::Request::builder()
+            .uri("http://localhost/health")
+            .header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(axum::body::Body::empty())
+            .ok()?;
+        let res = sender.send_request(req).await.ok()?;
+        if !res.status().is_success() {
+            return None;
+        }
+        let bytes = res.into_body().collect().await.ok()?.to_bytes().to_vec();
+        serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|v| {
+                v.get("version")
+                    .and_then(|v| v.as_str().map(str::to_string))
+            })
+    }
+
+    /// The full update chain against a real child process: install v1 →
+    /// spawn (supervise, health-gated) → perform_update against a v2 feed →
+    /// assert the old process exited, the new one is running, and its own
+    /// /health reports the v2 version. This is the was_running=true half of
+    /// the update contract the install-time tests can't cover: a real
+    /// graceful stop (SIGTERM / stdin shutdown), a real binary replacement
+    /// (ETXTBSY territory), and a real restart.
+    #[tokio::test]
+    async fn perform_update_with_a_live_component_process() {
+        use std::time::Duration;
+        // A wedged stop/restart must fail the test loudly, not hang CI: the
+        // budget covers the health polls, one graceful stop (the 5s grace
+        // period) and one restart on slow runners.
+        tokio::time::timeout(Duration::from_secs(120), async {
+            let dir = tempfile::tempdir().unwrap();
+            let state = AppState::new(dir.path().join("data")).unwrap();
+            state.layout.ensure_dirs().unwrap();
+
+            let bin_bytes = std::fs::read(test_component_bin()).unwrap();
+
+            // The feed serving the v2 package (bound first so the feed URL
+            // and the zip manifest share the same port)
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let feed_url = format!("{base}/feed.json");
+            let zip_bytes =
+                make_live_zip("livedemo", "livedemo", "0.2.0", &feed_url, &bin_bytes);
+            let feed_body = format!(
+                r#"{{ "version": "0.2.0", "notes": "test release", "packages": {{ "linux-x86_64": "{base}/pkg.zip", "macos-aarch64": "{base}/pkg.zip", "windows-x86_64": "{base}/pkg.zip" }} }}"#
+            );
+            spawn_feed_server(listener, feed_body, zip_bytes);
+
+            // Install v1 through the real installer (the fingerprinted
+            // binary lands in the component directory)
+            let v1_zip = make_live_zip("livedemo", "livedemo", "0.1.0", &feed_url, &bin_bytes);
+            let v1_path = dir.path().join("test-component-0.1.0.zip");
+            std::fs::write(&v1_path, &v1_zip).unwrap();
+            let manifest = installer::install(&v1_path, &state.layout).await.unwrap();
+            config_plane::reconcile_state(
+                &state.layout,
+                &manifest,
+                state.layout.component_config_file("livedemo"),
+            )
+            .await
+            .unwrap();
+            let entry = RegistryEntry::installed(manifest);
+            write_envelope(&state, &entry);
+
+            // Start the real process (the start_component command's core
+            // minus its tauri State): spawn → health → supervise + register
+            let workdir = registry::workdir_for(&state.layout, &entry);
+            supervisor::launch_with_transition(&state, Arc::new(entry.manifest.clone()), workdir)
+                .await
+                .unwrap();
+            let running = state.registry.lookup("livedemo").await.unwrap();
+            assert_eq!(running.manifest.version, "0.1.0");
+
+            // The whole chain in one command: download → graceful stop (a
+            // real SIGTERM/stdin shutdown on a real process) → reinstall →
+            // restart
+            let version = perform_update_core(&state, "livedemo").await.unwrap();
+            assert_eq!(version, "0.2.0");
+
+            // Running again, registered under the new generation's manifest
+            let running = state.registry.lookup("livedemo").await.unwrap();
+            assert_eq!(running.manifest.version, "0.2.0");
+
+            // The new process is the new generation: its /health reports the
+            // version from its own argv (the old process served 0.1.0)
+            let reported = probe_component_version(&running.endpoint, running.token.as_str())
+                .await
+                .expect("the restarted component must answer /health");
+            assert_eq!(reported, "0.2.0");
+
+            // The on-disk registration carries the new version too (the
+            // next update check's baseline)
+            let updated = registry::load_entry(&state.layout, "livedemo")
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(updated.manifest.version, "0.2.0");
+
+            // The temp zip was consumed
+            assert!(
+                !std::env::temp_dir()
+                    .join("superlive-update-livedemo-0.2.0.zip")
+                    .exists()
+            );
+        })
+        .await
+        .expect("the live-process update flow must finish within the test budget");
+    }
+    // ---------- write_component_config's save chain ----------
+    //
+    // The three branch shapes of the shell UI save → component /config flow:
+    // not-running writes config.toml shell-side / running forwards the PUT
+    // to the component's standard endpoint (validation JSON relayed
+    // verbatim, restart_required changes drive the restart chain).
+
+    /// Declarations mirrored from config_plane's tests: token (required +
+    /// restart_required) / cron (format) / mode (select). launch=null so a
+    /// triggered restart re-enters the launch flow as a no-op (no process
+    /// to spawn) — the branch semantics under test live above the spawn.
+    fn installed_entry_with_config(id: &str, ns: &str) -> RegistryEntry {
+        RegistryEntry::installed(
+            serde_json::from_str(&format!(
+                r#"{{
+                "id": "{id}",
+                "version": "0.1.0",
+                "min_shell_version": "0.1.0",
+                "namespace": "{ns}",
+                "display_name": "{id}",
+                "ui": {{ "ui_type": "module", "entry": "assets/main.js" }},
+                "menu": null,
+                "routes": [],
+                "launch": null,
+                "files": [ {{ "path": "bin", "sha256": "aa" }} ],
+                "config": {{
+                    "fields": [
+                        {{ "key": "tushare.token", "label": "token", "type": "string", "required": true, "restart_required": true }},
+                        {{ "key": "job.cron", "label": "cron", "type": "string", "format": "cron" }},
+                        {{ "key": "mode", "label": "mode", "type": "select", "options": ["fast", "slow"] }}
+                    ]
+                }}
+            }}"#
+            ))
+            .unwrap(),
+        )
+    }
+
+    /// In-process mock of the component's standard PUT /config endpoint:
+    /// records the received bodies and answers with a fixed status/body.
+    async fn serve_config_put(
+        status: axum::http::StatusCode,
+        body: &'static str,
+    ) -> (slsdk_rs::Endpoint, Arc<tokio::sync::Mutex<Vec<String>>>) {
+        let received = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let received_for_handler = Arc::clone(&received);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                axum::Router::new().route(
+                    "/config",
+                    axum::routing::put(move |payload: axum::body::Bytes| {
+                        let received = Arc::clone(&received_for_handler);
+                        async move {
+                            received
+                                .lock()
+                                .await
+                                .push(String::from_utf8_lossy(&payload).into_owned());
+                            (status, body.to_string())
+                        }
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        (slsdk_rs::Endpoint::Tcp { addr }, received)
+    }
+
+    /// Hand-register a running component pointed at `endpoint`, with a stop
+    /// watcher that deregisters on the first stop signal — the role
+    /// supervise plays for a real process, so the restart chain's
+    /// stop_and_wait_removed returns promptly instead of burning its
+    /// full wait budget on a process that does not exist.
+    async fn register_running(
+        state: &AppState,
+        entry: &RegistryEntry,
+        endpoint: slsdk_rs::Endpoint,
+    ) {
+        let (stop_tx, mut stop_rx) = tokio::sync::watch::channel(());
+        let reg = Arc::clone(&state.registry);
+        let ns = entry.manifest.namespace.clone();
+        tokio::spawn(async move {
+            if stop_rx.changed().await.is_ok() {
+                reg.remove(&ns).await;
+            }
+        });
+        state
+            .registry
+            .register(
+                &entry.manifest.namespace,
+                registry::RunningComponent {
+                    manifest: Arc::new(entry.manifest.clone()),
+                    endpoint,
+                    token: Arc::new("comp-token".to_string()),
+                    pid: None,
+                    stop: stop_tx,
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn write_config_unstarted_writes_file_and_recomputes_ready_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let entry = installed_entry_with_config("cfgapp", "cfgns");
+        write_envelope(&state, &entry);
+        // The component directory exists in the real install flow (the
+        // envelope write does not create it)
+        std::fs::create_dir_all(state.layout.component_dir("cfgapp")).unwrap();
+
+        let result = write_component_config_core(
+            &state,
+            "cfgapp",
+            serde_json::json!({ "tushare.token": "tok", "mode": "fast" }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["restart_required_changed"], false);
+        // File landed with the values (the shell-side write path)
+        let config_path = registry::config_path_for(&state.layout, &entry);
+        let file = std::fs::read_to_string(&config_path).unwrap();
+        assert!(
+            file.contains("tok"),
+            "config.toml must carry the written value: {file:?}"
+        );
+        // Required fields complete → needs-config → ready (gate recompute)
+        let meta = config_plane::load_meta(&state.layout, "cfgapp")
+            .await
+            .expect("the settled state must be persisted");
+        assert_eq!(meta.state, config_plane::ComponentState::Ready);
+    }
+
+    #[tokio::test]
+    async fn write_config_running_relays_validation_json_verbatim() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let entry = installed_entry_with_config("vapp", "vns");
+        write_envelope(&state, &entry);
+        let errors_body = r#"{"errors": {"tushare.token": "missing"}}"#;
+        let (endpoint, received) =
+            serve_config_put(axum::http::StatusCode::BAD_REQUEST, errors_body).await;
+        register_running(&state, &entry, endpoint).await;
+
+        let e =
+            write_component_config_core(&state, "vapp", serde_json::json!({ "tushare.token": "" }))
+                .await
+                .unwrap_err();
+        assert_eq!(
+            e, errors_body,
+            "the component's validation JSON must be relayed verbatim"
+        );
+        assert_eq!(
+            received.lock().await.len(),
+            1,
+            "the PUT reached the component"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_config_running_success_without_restart_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let entry = installed_entry_with_config("runapp", "runns");
+        write_envelope(&state, &entry);
+        std::fs::create_dir_all(state.layout.component_dir("runapp")).unwrap();
+        // Baseline on disk: the running component's current values (the
+        // restart_required baseline for change detection).
+        config_plane::write_config_unstarted(
+            &entry.manifest,
+            &registry::config_path_for(&state.layout, &entry),
+            serde_json::json!({ "tushare.token": "tok" }),
+        )
+        .await
+        .unwrap();
+        // The component accepts the PUT and reports the same token back.
+        let (endpoint, received) = serve_config_put(
+            axum::http::StatusCode::OK,
+            r#"{"values": {"tushare.token": "tok"}}"#,
+        )
+        .await;
+        register_running(&state, &entry, endpoint).await;
+
+        let payload = serde_json::json!({ "tushare.token": "tok" });
+        let result = write_component_config_core(&state, "runapp", payload.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(result["restart_required_changed"], false);
+        // The PUT arrived verbatim at the component (forwarded, not rewritten)
+        let sent = received.lock().await;
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0], payload.to_string());
+    }
+
+    #[tokio::test]
+    async fn write_config_running_restart_required_change_triggers_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        let entry = installed_entry_with_config("reapp", "rens");
+        write_envelope(&state, &entry);
+        std::fs::create_dir_all(state.layout.component_dir("reapp")).unwrap();
+        // Baseline on disk: token=tok. The component accepts the PUT and
+        // reports the NEW value → restart_required changed → the shell
+        // restarts the component.
+        config_plane::write_config_unstarted(
+            &entry.manifest,
+            &registry::config_path_for(&state.layout, &entry),
+            serde_json::json!({ "tushare.token": "tok" }),
+        )
+        .await
+        .unwrap();
+        let (endpoint, _received) = serve_config_put(
+            axum::http::StatusCode::OK,
+            r#"{"values": {"tushare.token": "tok2"}}"#,
+        )
+        .await;
+        register_running(&state, &entry, endpoint).await;
+
+        let result = write_component_config_core(
+            &state,
+            "reapp",
+            serde_json::json!({ "tushare.token": "tok2" }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["restart_required_changed"], true);
+        // The restart chain completed: the stop watcher deregistered the old
+        // running entry, the re-launch was a no-op (launch=null), and the
+        // settled meta came back as running.
+        assert!(
+            state.registry.lookup("rens").await.is_none(),
+            "the old running entry must be gone after the restart"
+        );
+        let meta = config_plane::load_meta(&state.layout, "reapp")
+            .await
+            .expect("the settled state must be persisted after the restart");
+        assert_eq!(meta.state, config_plane::ComponentState::Running);
     }
 }

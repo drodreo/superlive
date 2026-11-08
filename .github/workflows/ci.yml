@@ -44,6 +44,10 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
       - name: cargo test (sdk + scaffold crates)
+        # bash so every command fails the step: the windows default (pwsh)
+        # only reflects the LAST command's exit code, which let a compile
+        # failure in the first cargo test pass green.
+        shell: bash
         run: |
           cargo test --manifest-path slsdk-rs/Cargo.toml
           cargo test --manifest-path slscaffold/Cargo.toml
