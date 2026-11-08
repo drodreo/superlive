@@ -1,6 +1,6 @@
 [package]
 name = "superlive-shell"
-version = "0.4.4"
+version = "0.4.5"
 edition = "2024"
 rust-version = "1.85"
 description = "superlive v2 componentized platform shell: registry + unified API gateway + component lifecycle management"
