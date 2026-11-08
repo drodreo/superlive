@@ -25,6 +25,7 @@ import {
   installComponent,
   listComponents,
   performUpdate,
+  readComponentLog,
   startComponent,
   stopComponent,
   uninstallComponent,
@@ -249,6 +250,32 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
     }
   };
 
+  // ---------- Component log viewer (the shell's stdout/stderr capture) ----------
+
+  // Open viewer state: which component + the fetched tail content + a read
+  // error (shown in-place; the modal stays open so the context is kept).
+  // Read-only: deliberately not gated by the busy flag — log inspection must
+  // not fight with, nor be blocked by, start/stop/update actions.
+  const [logView, setLogView] = useState<{
+    id: string;
+    content: string;
+    error: string | null;
+  } | null>(null);
+
+  const fetchLog = useCallback(async (id: string) => {
+    try {
+      const content = await firstValueFrom(readComponentLog(id));
+      setLogView({ id, content, error: null });
+    } catch (e) {
+      setLogView({ id, content: "", error: String(e) });
+    }
+  }, []);
+
+  const openLog = (id: string) => {
+    setLogView({ id, content: "", error: null });
+    void fetchLog(id);
+  };
+
   // Post-install "Start now": the start gate per the lifecycle contract —
   // needs-config is routed to the config page,
   // the rest (zero-config ready / stopped) go to the launch options dialog
@@ -373,6 +400,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                     <button
                       type="button"
                       disabled={busy}
+                      title={t("mgr.actGoConfig")}
                       onClick={() => navigate(`/config/${c.id}`)}
                     >
                       {t("mgr.goConfig")}
@@ -383,6 +411,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                       <button
                         type="button"
                         disabled={busy}
+                        title={t("mgr.actConfigure")}
                         onClick={() => navigate(`/config/${c.id}`)}
                       >
                         {t("mgr.configure")}
@@ -391,6 +420,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                         <button
                           type="button"
                           disabled={busy}
+                          title={t("mgr.actStop")}
                           onClick={() =>
                             void run(stopComponent(c.id), "mgr.stopRequested", {
                               id: c.id,
@@ -404,6 +434,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                         <button
                           type="button"
                           disabled={busy}
+                          title={t("mgr.actStart")}
                           onClick={() =>
                             void run(startComponent(c.id), "mgr.started", {
                               id: c.id,
@@ -415,11 +446,21 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                       )}
                     </>
                   )}
+                  {/* Log viewer entry: the shell captures the component's
+                      stdout/stderr (read-only, no busy gating) */}
+                  <button
+                    type="button"
+                    title={t("mgr.actLogs")}
+                    onClick={() => openLog(c.id)}
+                  >
+                    {t("mgr.log")}
+                  </button>{" "}
                   {/* Update flow entry: only components declaring an update source participate */}
                   {c.update != null && (
                     <button
                       type="button"
                       disabled={busy}
+                      title={t("mgr.actUpdate")}
                       onClick={() => void beginUpdateFlow(c.id)}
                     >
                       {t("upd.check")}
@@ -429,6 +470,7 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
                     type="button"
                     className="danger"
                     disabled={busy}
+                    title={t("mgr.actUninstall")}
                     onClick={async () => {
                       const confirmKey =
                         c.source === "dev"
@@ -522,6 +564,38 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
             })}
           </p>
           {updateDialog.notes && <p>{updateDialog.notes}</p>}
+        </Modal>
+      )}
+
+      {/* Component log viewer: the shell's stdout/stderr capture tail
+          (monospace, scrollable; refresh re-reads the file) */}
+      {logView && (
+        <Modal
+          title={t("log.title", { id: logView.id })}
+          footer={
+            <>
+              <button type="button" onClick={() => void fetchLog(logView.id)}>
+                {t("log.refresh")}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => setLogView(null)}
+              >
+                {t("log.close")}
+              </button>
+            </>
+          }
+        >
+          {logView.error ? (
+            <p className="log-empty">
+              {t("log.readFailed", { error: logView.error })}
+            </p>
+          ) : logView.content ? (
+            <pre className="log-viewer">{logView.content}</pre>
+          ) : (
+            <p className="log-empty">{t("log.empty")}</p>
+          )}
         </Modal>
       )}
 

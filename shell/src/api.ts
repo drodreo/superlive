@@ -202,6 +202,16 @@ export const startComponent = (id: string): Observable<void> =>
 export const stopComponent = (id: string): Observable<void> =>
   invoke$<void>("stop_component", { id });
 
+/**
+ * Read the tail of a component's captured stdout/stderr log. An empty
+ * string = the component has not produced any logs yet (never ran since
+ * install). `tail` caps the returned line count (backend default 500).
+ */
+export const readComponentLog = (
+  id: string,
+  tail?: number,
+): Observable<string> => invoke$<string>("read_component_log", { id, tail });
+
 // ---------- Component update flow (the manifest's optional `update` declaration) ----------
 
 /** The check_update command's structured result (the confirmation dialog's basis). */

@@ -460,7 +460,7 @@ body {
 }
 
 .comp-table button {
-  padding: 4px 12px;
+  padding: 4px 8px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--bg-panel);
@@ -469,7 +469,7 @@ body {
 }
 
 .comp-table button + button {
-  margin-left: 6px;
+  margin-left: 4px;
 }
 
 .comp-table button.danger {
@@ -870,6 +870,27 @@ button.link {
 
 .modal-body p {
   margin: 0;
+}
+
+/* Component log viewer (the management page's log modal): monospace,
+   scrollable block; the modal body already scrolls, the pre just keeps its
+   line structure intact */
+.log-viewer {
+  margin: 0;
+  padding: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.log-empty {
+  color: var(--text-dim);
 }
 
 .modal-footer {

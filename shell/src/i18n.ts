@@ -78,10 +78,10 @@ const zh = {
   "table.state": "状态",
   "table.actions": "操作",
   "mgr.empty": "尚未安装任何组件",
-  "mgr.goConfig": "去配置",
+  "mgr.goConfig": "配置",
   "mgr.configure": "配置",
-  "mgr.stop": "停止",
-  "mgr.start": "启动",
+  "mgr.stop": "停",
+  "mgr.start": "启",
   "mgr.uninstall": "卸载",
   "mgr.uninstallConfirm": "卸载组件 {{id}}？（将停止进程并删除全部数据）",
   "mgr.uninstallConfirmDev": "卸载组件 {{id}}？（仅移除注册，项目目录保留）",
@@ -90,6 +90,25 @@ const zh = {
   "mgr.startNow": "立即启动",
   "mgr.installedPrompt":
     "组件「{{name}}」安装完成。是否立即启动？存在未完成必填配置的组件会先进入配置页。",
+
+  // Management table's compact action buttons: the visible label is short,
+  // the full wording lives on the title attribute (hover hint)
+  "mgr.actGoConfig": "前往配置页完成必填配置",
+  "mgr.actConfigure": "打开组件配置",
+  "mgr.actStop": "停止组件",
+  "mgr.actStart": "启动组件",
+  "mgr.actLogs": "查看组件日志",
+  "mgr.actUpdate": "检查更新",
+  "mgr.actUninstall": "卸载组件",
+
+  // Component log viewer (the shell captures stdout/stderr into
+  // {data}/logs/{id}.log)
+  "mgr.log": "日志",
+  "log.title": "组件日志 {{id}}",
+  "log.empty": "组件尚未产生日志",
+  "log.refresh": "刷新",
+  "log.close": "关闭",
+  "log.readFailed": "读取日志失败: {{error}}",
 
   // Launch options dialog
   "launch.title": "启动选项",
@@ -102,7 +121,9 @@ const zh = {
 
   // Component update flow (the manifest's optional update declaration:
   // check → confirm → download → stop → install → restart)
-  "upd.check": "检查更新",
+  // upd.check is the management table's compact button label (the full
+  // "check for updates" wording lives on mgr.actUpdate's title attribute)
+  "upd.check": "更新",
   "upd.upToDate": "已是最新版本",
   "upd.title": "发现新版本",
   "upd.currentToLatest": "当前 {{current}} → 最新 {{latest}}",
@@ -289,7 +310,7 @@ const en: Record<ShellKey, string> = {
   "table.state": "State",
   "table.actions": "Actions",
   "mgr.empty": "No components installed yet",
-  "mgr.goConfig": "Set up",
+  "mgr.goConfig": "Config",
   "mgr.configure": "Config",
   "mgr.stop": "Stop",
   "mgr.start": "Start",
@@ -304,6 +325,26 @@ const en: Record<ShellKey, string> = {
   "mgr.installedPrompt":
     '"{{name}}" installed. Start it now? Components with unfinished required configuration go to the configuration page first.',
 
+  // Management table's compact action buttons: the visible label is short,
+  // the full wording lives on the title attribute (hover hint)
+  "mgr.actGoConfig":
+    "Go to the configuration page to complete the required configuration",
+  "mgr.actConfigure": "Open the component configuration",
+  "mgr.actStop": "Stop the component",
+  "mgr.actStart": "Start the component",
+  "mgr.actLogs": "View the component log",
+  "mgr.actUpdate": "Check for updates",
+  "mgr.actUninstall": "Uninstall the component",
+
+  // Component log viewer (the shell captures stdout/stderr into
+  // {data}/logs/{id}.log)
+  "mgr.log": "Log",
+  "log.title": "Component log: {{id}}",
+  "log.empty": "The component has not produced any logs yet.",
+  "log.refresh": "Refresh",
+  "log.close": "Close",
+  "log.readFailed": "Failed to read the log: {{error}}",
+
   // Launch options dialog
   "launch.title": "Launch options",
   "launch.later": "Not now",
@@ -317,7 +358,9 @@ const en: Record<ShellKey, string> = {
 
   // Component update flow (the manifest's optional update declaration:
   // check → confirm → download → stop → install → restart)
-  "upd.check": "Check for updates",
+  // upd.check is the management table's compact button label (the full
+  // "check for updates" wording lives on mgr.actUpdate's title attribute)
+  "upd.check": "Update",
   "upd.upToDate": "Already the latest version",
   "upd.title": "New version available",
   "upd.currentToLatest": "Current {{current}} → latest {{latest}}",
