@@ -2382,8 +2382,8 @@ mod tests {
     async fn serve_config_put(
         status: axum::http::StatusCode,
         body: &'static str,
-    ) -> (slsdk_rs::Endpoint, Arc<std::sync::Mutex<Vec<String>>>) {
-        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+    ) -> (slsdk_rs::Endpoint, Arc<tokio::sync::Mutex<Vec<String>>>) {
+        let received = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let received_for_handler = Arc::clone(&received);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -2397,7 +2397,7 @@ mod tests {
                         async move {
                             received
                                 .lock()
-                                .unwrap()
+                                .await
                                 .push(String::from_utf8_lossy(&payload).into_owned());
                             (status, body.to_string())
                         }
@@ -2497,7 +2497,7 @@ mod tests {
             "the component's validation JSON must be relayed verbatim"
         );
         assert_eq!(
-            received.lock().unwrap().len(),
+            received.lock().await.len(),
             1,
             "the PUT reached the component"
         );
@@ -2534,7 +2534,7 @@ mod tests {
 
         assert_eq!(result["restart_required_changed"], false);
         // The PUT arrived verbatim at the component (forwarded, not rewritten)
-        let sent = received.lock().unwrap();
+        let sent = received.lock().await;
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0], payload.to_string());
     }
