@@ -160,6 +160,21 @@ shell picks by fixed priority: svg first, then png, gif, webp, jpg, jpeg,
 avif, bmp, ico. Ship no such file and the menu entry stays text-only —
 nothing else changes.
 
+## Component info
+
+`info.json` at the project root is a free-form description file for you, the
+developer: write it if you want to — the scaffolded skeleton carries
+suggested fields, all optional and freely editable or removable (JSON has no
+comments, so the fields are documented here):
+
+    name         display name of the component
+    description  one line about what it does
+    author       who maintains it
+    homepage     project page / repository URL
+
+Nothing enforces this file today — the shell neither parses nor requires it;
+a future shell surface (the component info card) is expected to read it.
+
 #@if !IMPORTED
 ## SDK dependency mode
 

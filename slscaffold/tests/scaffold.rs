@@ -106,9 +106,10 @@ fn join_rel(root: &Path, rel: &str) -> PathBuf {
 fn frontend_and_backend_generates_the_full_tree() {
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendAndBackend);
-    assert_eq!(result.created.len(), 12);
+    assert_eq!(result.created.len(), 13);
     for expected in [
         "README.md",
+        "info.json",
         "server/Cargo.toml",
         "server/src/main.rs",
         "ui/package.json",
@@ -125,13 +126,28 @@ fn frontend_and_backend_generates_the_full_tree() {
     }
     assert!(join_rel(&result.root, "server/Cargo.toml").is_file());
     assert!(join_rel(&result.root, "ui/src/App.tsx").is_file());
+
+    // info.json: the display name substitutes in, all four suggested fields
+    // are present, and no placeholder residue survives
+    let info = fs::read_to_string(join_rel(&result.root, "info.json")).unwrap();
+    assert!(info.contains(r#""name": "Demo Comp""#), "info.json: {info}");
+    for field in ["description", "author", "homepage"] {
+        assert!(
+            info.contains(&format!(r#""{field}""#)),
+            "info.json lacks {field}"
+        );
+    }
+    assert!(
+        !info.contains("__"),
+        "placeholder residue in info.json: {info}"
+    );
 }
 
 #[test]
 fn frontend_only_omits_the_server_plane() {
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::FrontendOnly);
-    assert_eq!(result.created.len(), 10);
+    assert_eq!(result.created.len(), 11);
     assert!(!has_file(&result.created, "server/"));
     assert!(!result.root.join("server").exists());
     assert!(join_rel(&result.root, "ui/src/App.tsx").is_file());
@@ -141,7 +157,7 @@ fn frontend_only_omits_the_server_plane() {
 fn backend_only_omits_the_ui_plane() {
     let dir = TempDir::new().unwrap();
     let result = scaffold_into(&dir, ComponentShape::BackendOnly);
-    assert_eq!(result.created.len(), 4);
+    assert_eq!(result.created.len(), 5);
     assert!(!has_file(&result.created, "ui/"));
     assert!(!result.root.join("ui").exists());
     assert!(join_rel(&result.root, "server/src/main.rs").is_file());
@@ -158,7 +174,7 @@ fn ts_templates_generate_the_ts_server_tree() {
         let result = scaffold_with_template(&dir, ComponentShape::FrontendAndBackend, template);
         // The TS server plane is an entry file plus its package.json
         // dependency root (no Cargo.toml / main.rs).
-        assert_eq!(result.created.len(), 12);
+        assert_eq!(result.created.len(), 13);
         assert!(has_file(&result.created, "server/server.ts"));
         assert!(has_file(&result.created, "server/package.json"));
         assert!(!has_file(&result.created, "server/Cargo.toml"));
