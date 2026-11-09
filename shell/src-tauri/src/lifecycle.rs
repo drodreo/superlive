@@ -157,6 +157,73 @@ fn absolute_launch_command(command: &str, workdir: &Path) -> PathBuf {
     workdir.join(command).components().collect::<PathBuf>()
 }
 
+/// Windows orphan guard: assign a freshly spawned component process to a
+/// global job object created with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
+///
+/// The shell process owns the only job handle and never closes it: any form
+/// of shell death (normal exit, crash, external kill) closes the handle, and
+/// the kernel then terminates every component in the job — the Windows
+/// equivalent of the Linux PDEATHSIG guard. A stale component process
+/// surviving its shell is not a hypothetical: it holds a sharing violation
+/// on the install directory, and every later update of that component fails
+/// until the process is killed by hand.
+///
+/// Failure here only degrades the guard (the component keeps running
+/// normally), so callers log a warning instead of failing the spawn.
+#[cfg(windows)]
+fn assign_child_to_kill_on_close_job(child: &mut Child) -> io::Result<()> {
+    use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
+
+    let job = kill_on_close_job_handle() as windows_sys::Win32::Foundation::HANDLE;
+    let child_handle = child
+        .raw_handle()
+        .ok_or_else(|| io::Error::other("the child handle is already gone"))?;
+    let assigned = unsafe { AssignProcessToJobObject(job, child_handle) };
+    if assigned == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// The process-lifetime KILL_ON_JOB_CLOSE job every component is assigned
+/// to. Lazily created once, owned by this static (never closed): the handle
+/// dies with the shell process, and the kernel then kills the job members.
+/// Stored as isize (the raw HANDLE is a pointer, not Send/Sync-safe for a
+/// static).
+#[cfg(windows)]
+static KILL_ON_CLOSE_JOB: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+
+/// Get (creating on first use) the global KILL_ON_JOB_CLOSE job handle (as
+/// isize; cast to HANDLE at the call sites). Exposed separately so tests
+/// can assert membership of this *specific* job (an IsProcessInJob(NULL)
+/// check would also answer true for an inherited sandbox job, which would
+/// not prove our guard did anything).
+#[cfg(windows)]
+pub(crate) fn kill_on_close_job_handle() -> isize {
+    *KILL_ON_CLOSE_JOB.get_or_init(|| unsafe {
+        use windows_sys::Win32::System::JobObjects::{
+            CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let applied = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &limits as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+        if applied == 0 {
+            log::error!(
+                "KILL_ON_JOB_CLOSE not applied to the component job object (orphan guard inert): {}",
+                io::Error::last_os_error()
+            );
+        }
+        job as isize
+    })
+}
+
 /// Full component start flow: allocate endpoint → spawn (env injection) →
 /// health polling →
 /// register + start supervise. Any step failing reclaims the already-created
@@ -235,7 +302,9 @@ pub async fn spawn_component(
         // moment the shell dies (any form — crash, external kill, normal
         // exit), so a dead shell can no longer leak live component processes.
         // prctl/PDEATHSIG is Linux-only (macOS has no equivalent — orphan
-        // reaping there relies on the supervisor's own wait loop); it is also
+        // reaping there relies on the supervisor's own wait loop); the
+        // Windows counterpart is the KILL_ON_JOB_CLOSE job assignment right
+        // after spawn (see assign_child_to_kill_on_close_job); it is also
         // per-thread (it watches the thread that forked): tokio worker
         // threads live as long as the process, which makes it safe here —
         // never move this spawn into `spawn_blocking` (disposable blocking
@@ -263,6 +332,19 @@ pub async fn spawn_component(
         args: launch.args.clone(),
     })?;
     let pid = child.id();
+
+    // Windows orphan guard: assign the fresh child to the global
+    // KILL_ON_JOB_CLOSE job *immediately* after spawn (the spawn→assign
+    // window is the Windows counterpart of the fork→prctl race above, same
+    // millisecond scale, accepted). Failure only degrades the guard (the
+    // component still runs normally) — logged, never fatal.
+    #[cfg(windows)]
+    if let Err(e) = assign_child_to_kill_on_close_job(&mut child) {
+        log::warn!(
+            "component {} job-object assignment failed (orphan guard degraded, the component still runs): {e}",
+            manifest.id
+        );
+    }
 
     // Hand the output pipes to dedicated reader tasks right away: starting
     // them *before* the health probe means even a probe-failure reclaim
@@ -745,6 +827,52 @@ mod tests {
     }
 
     // ---------- health polling ----------
+
+    /// The Windows orphan guard must actually cover spawned children: a
+    /// child assigned to the KILL_ON_JOB_CLOSE job answers
+    /// IsProcessInJob(hJob) = TRUE. Membership is asserted against *this*
+    /// job (not NULL — an inherited sandbox job would also answer true) so
+    /// the assignment itself is what is proven. Anchor of the 2026-11-09
+    /// stale-process incident: without the guard, a shell death leaks live
+    /// component processes that then permanently lock the install directory.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn kill_on_close_job_covers_spawned_children() {
+        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows_sys::Win32::System::JobObjects::IsProcessInJob;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+
+        // tokio Child: the production assign path goes through
+        // Child::raw_handle(), only available on the tokio type
+        let mut child = tokio::process::Command::new(
+            std::env::var_os("ComSpec").unwrap_or_else(|| "cmd.exe".into()),
+        )
+        .args(["/d", "/c", "ping", "-n", "30", "127.0.0.1"])
+        .spawn()
+        .unwrap();
+        super::assign_child_to_kill_on_close_job(&mut child).unwrap();
+
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, child.id().unwrap());
+            assert!(
+                process as isize != 0,
+                "OpenProcess failed on the fresh child"
+            );
+            let mut in_job = 0i32;
+            let job = super::kill_on_close_job_handle() as HANDLE;
+            let ok = IsProcessInJob(process, job, &mut in_job);
+            CloseHandle(process);
+            assert!(ok != 0, "IsProcessInJob failed");
+            assert!(
+                in_job != 0,
+                "the spawned child must live in the KILL_ON_JOB_CLOSE job"
+            );
+        }
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+    }
 
     #[tokio::test]
     async fn healthy_component_is_detected() {

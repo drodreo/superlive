@@ -1,6 +1,6 @@
 [package]
 name = "superlive-shell"
-version = "0.4.11"
+version = "0.4.12"
 default-run = "superlive-shell"
 edition = "2024"
 rust-version = "1.85"
@@ -67,6 +67,22 @@ nix = { version = "0.29", features = ["signal", "process"] }
 # PDEATHSIG fork-exec race backstop: libc::_exit (async-signal-safe) inside
 # pre_exec; already in the tree via nix — declared here, zero extra compilation
 libc = "0.2"
+
+# Windows orphan guard (lifecycle): components are assigned to a job object
+# with KILL_ON_JOB_CLOSE — the kernel kills them when the shell dies in any
+# form, mirroring the Linux PDEATHSIG semantics.
+# Windows orphan sweeper (installer): toolhelp32 process snapshot + image-path
+# matching + termination, clearing stale component processes that hold a
+# sharing violation on the install directory.
+# Already in the tree via tauri/wry — declared here for direct use.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
 
 [dev-dependencies]
 # Temp directories for the installer/lifecycle tests
