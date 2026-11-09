@@ -3733,6 +3733,7 @@ dependencies = [
  "tokio",
  "toml 0.8.2",
  "tower",
+ "windows-sys 0.59.0",
  "zip 2.4.2",
 ]
 

@@ -229,7 +229,7 @@ where
                 return Err(std::io::Error::new(
                     err.kind(),
                     format!(
-                        "{what} ({}): file lock retries exhausted after {attempt} attempts: {err} — likely held by antivirus or another process; retrying the update in a moment usually succeeds",
+                        "{what} ({}): file lock retries exhausted after {attempt} attempts: {err} — still locked after retries; an antivirus scan usually clears shortly, otherwise check for processes running from the component directory",
                         path.display()
                     ),
                 ));
@@ -237,6 +237,152 @@ where
             Err(err) => return Err(err),
         }
     }
+}
+
+/// Orphan sweeper (Windows): terminate processes whose executable image
+/// lives inside `dir`, returning how many were terminated.
+///
+/// Desktop reality: a previous shell instance may have died without taking
+/// its component processes down (a pre-job-object shell, an external kill
+/// racing the guard, ...). Such a stale process holds a sharing violation
+/// on the install directory *forever* — no retry window outlives it, and
+/// every same-id update of that component fails until the process is killed
+/// by hand. The sweeper runs after the move-aside retries are exhausted:
+/// matching is by executable image path with a separator boundary, so only
+/// this component's own processes are ever touched (a legitimately running
+/// component has already been gracefully stopped by the update entry before
+/// install; sibling directories like `<id>2` never match).
+#[cfg(windows)]
+async fn sweep_processes_living_in(dir: &Path) -> usize {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        QueryFullProcessImageNameW, TerminateProcess,
+    };
+
+    /// Full image path of a pid via QueryFullProcessImageNameW (the
+    /// toolhelp entry only carries the base name). None on any failure
+    /// (access denied, already exited, ...): such a process is simply not a
+    /// sweep candidate.
+    fn image_path(pid: u32) -> Option<String> {
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process as isize == 0 {
+                return None;
+            }
+            let mut buffer = [0u16; 1024];
+            let mut len = buffer.len() as u32;
+            let mut name = None;
+            if QueryFullProcessImageNameW(
+                process,
+                PROCESS_NAME_WIN32,
+                buffer.as_mut_ptr(),
+                &mut len,
+            ) != 0
+            {
+                name = Some(String::from_utf16_lossy(&buffer[..len as usize]));
+            }
+            CloseHandle(process);
+            name
+        }
+    }
+
+    let Ok(canonical) = dir.canonicalize() else {
+        return 0;
+    };
+    // Case-insensitive prefix with a separator boundary: `...\xatodo\` matches
+    // `...\xatodo\bin\xc.exe` but never `...\xatodo2\bin\...` (canonicalize's
+    // \\?\ verbatim prefix is stripped; QueryFullProcessImageNameW returns
+    // the plain Win32 form)
+    let prefix = format!(
+        "{}\\",
+        canonical
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .trim_end_matches('\\')
+    )
+    .to_lowercase();
+
+    let mut victims: Vec<u32> = Vec::new();
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot as isize == -1 {
+            return 0;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                if entry.th32ProcessID != 0 {
+                    if let Some(path) = image_path(entry.th32ProcessID) {
+                        if path.to_lowercase().starts_with(&prefix) {
+                            victims.push(entry.th32ProcessID);
+                        }
+                    }
+                }
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snapshot);
+    }
+
+    let mut swept = 0usize;
+    for pid in victims {
+        unsafe {
+            let process = OpenProcess(PROCESS_TERMINATE, 0, pid);
+            if process as isize != 0 {
+                if TerminateProcess(process, 1) != 0 {
+                    swept += 1;
+                }
+                CloseHandle(process);
+            }
+        }
+    }
+    swept
+}
+
+/// Orphan sweeper (Unix): SIGKILLs processes whose executable image (the
+/// /proc/<pid>/exe symlink) lives inside `dir` — see the Windows twin for
+/// the full rationale. On stock unix filesystems this path is effectively
+/// unreachable (rename/unlink are not blocked by a running process, so no
+/// sharing violation ever surfaces); it is kept as a defensive backstop for
+/// exotic mounts (FUSE/network filesystems) where rename can still fail
+/// with EBUSY. macOS has no /proc: 0 there.
+#[cfg(unix)]
+async fn sweep_processes_living_in(dir: &Path) -> usize {
+    let Ok(canonical) = dir.canonicalize() else {
+        return 0;
+    };
+    // Separator boundary: `.../xatodo/` must never match `.../xatodo2/...`
+    let prefix = format!("{}/", canonical.to_string_lossy().trim_end_matches('/'));
+    let me = std::process::id();
+    let mut swept = 0usize;
+    let Ok(proc_dir) = std::fs::read_dir("/proc") else {
+        return 0;
+    };
+    for entry in proc_dir.flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+            continue;
+        };
+        if pid == me {
+            continue;
+        }
+        let Ok(image) = std::fs::read_link(format!("/proc/{pid}/exe")) else {
+            continue;
+        };
+        if image.to_string_lossy().starts_with(&prefix)
+            && unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) } == 0
+        {
+            swept += 1;
+        }
+    }
+    swept
 }
 
 async fn install_inner(
@@ -334,12 +480,48 @@ async fn install_inner(
         // cannot express the HRTB (lifetime may not live long enough);
         // calling the async fn directly has no such issue with the argument
         // borrows
-        if let Err(source) =
+        // Move-aside with an orphan-sweeper fallback: a stale component
+        // process (its shell died without taking it down) holds a sharing
+        // violation on the directory *forever* — the 2 s retry window only
+        // covers antivirus-grade locks. When the retries exhaust, sweep the
+        // processes still living in the install directory and try once more;
+        // with nothing to sweep (antivirus or an unrelated holder), surface
+        // the original error.
+        let move_aside_err =
             with_file_lock_retry("move the old install directory aside", &target, || {
                 tokio::fs::rename(&target, &replaced)
             })
             .await
-        {
+            .err();
+        let source = match move_aside_err {
+            None => None,
+            Some(first) => {
+                let swept = sweep_processes_living_in(&target).await;
+                if swept == 0 {
+                    Some(first)
+                } else {
+                    log::warn!(
+                        "swept {swept} stale process(es) still living in {}; retrying the replacement",
+                        target.display()
+                    );
+                    // Grace for the OS to release the terminated processes'
+                    // image handles before the retry
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    // The retried error (its description carries the
+                    // after-sweeping context) is the informative one; the
+                    // first error's scenario is already covered by the warn
+                    // log above
+                    with_file_lock_retry(
+                        "move the old install directory aside after sweeping stale processes",
+                        &target,
+                        || tokio::fs::rename(&target, &replaced),
+                    )
+                    .await
+                    .err()
+                }
+            }
+        };
+        if let Some(source) = source {
             // Moving the old directory away failed: restore the config backup
             // to its original place (no install happened; the original
             // directory's shape must be intact)
@@ -598,6 +780,95 @@ mod tests {
             }}"#,
             entries.join(",")
         )
+    }
+
+    /// Spawn a long-lived process whose executable image lives inside `dir`
+    /// — a stale component process stand-in: never registered anywhere,
+    /// exactly like an orphan left behind by a dead shell instance.
+    /// Windows: a copy of cmd.exe waits on `ping` (ping is an external exe
+    /// with no console-input dependency — `timeout` would refuse redirected
+    /// stdin and exit immediately, failing to hold any lock). Unix: a copy
+    /// of `sleep`.
+    fn spawn_stale_sleeper_in(dir: &std::path::Path) -> std::process::Child {
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        #[cfg(windows)]
+        let (source, name, args): (std::path::PathBuf, &str, Vec<&str>) = (
+            std::env::var_os("ComSpec")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| r"C:\Windows\System32\cmd.exe".into()),
+            "stale-sleeper.exe",
+            vec!["/d", "/c", "ping", "-n", "30", "127.0.0.1"],
+        );
+        #[cfg(unix)]
+        let (source, name, args): (std::path::PathBuf, &str, Vec<&str>) =
+            ("/bin/sleep".into(), "stale-sleeper", vec!["30"]);
+        let sleeper = bin.join(name);
+        std::fs::copy(&source, &sleeper).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&sleeper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::process::Command::new(&sleeper)
+            .args(&args)
+            .spawn()
+            .unwrap()
+    }
+
+    /// Regression (real-world incident, 2026-11-09): a stale component
+    /// process whose shell instance had died held a sharing violation on the
+    /// install directory; the same-id update failed permanently with
+    /// "file lock retries exhausted ... likely held by antivirus ...
+    /// retrying usually succeeds" — misleading (no retry could ever succeed
+    /// against a live process) and unrecoverable until the process was
+    /// killed by hand. The sweeper fallback must terminate the stale process
+    /// and let the replacement land.
+    ///
+    /// Windows-only scenario: on unix, renaming a directory (and unlinking
+    /// files inside it) is not blocked by a process still running from it —
+    /// no sharing violation ever occurs, so the sweeper path is unreachable
+    /// there and the sleeper simply outlives the test. Ignored on non-
+    /// Windows for exactly that reason (the ignore is the documented
+    /// statement of the platform difference, not a skipped obligation).
+    #[cfg_attr(
+        not(windows),
+        ignore = "unix rename/unlink ignore running processes; the lock scenario cannot occur"
+    )]
+    #[tokio::test]
+    async fn install_replaces_directory_held_by_stale_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(dir.path());
+        let server = b"#!/bin/sh\n";
+
+        // v1 installed (the "server" file keeps "bin/" free for the sleeper)
+        let v1 = manifest_json("orphanapp", "orphan-ns", "1.0.0", &[("server", server)]);
+        let zip1 = dir.path().join("v1.zip");
+        make_zip(&zip1, &v1, &[("server", server, 0o755)]);
+        install(&zip1, &layout).await.unwrap();
+
+        // Stale process living in the install directory (orphan stand-in),
+        // given a beat to be fully created before the sweep scans for it
+        let mut stale = spawn_stale_sleeper_in(&layout.component_dir("orphanapp"));
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(
+            stale.try_wait().unwrap().is_none(),
+            "the stale sleeper must still be running when the update starts"
+        );
+
+        // v2 must land despite the lock (the sweeper clears the stale process)
+        let v2 = manifest_json("orphanapp", "orphan-ns", "2.0.0", &[("server", server)]);
+        let zip2 = dir.path().join("v2.zip");
+        make_zip(&zip2, &v2, &[("server", server, 0o755)]);
+        let manifest = install(&zip2, &layout).await.unwrap_or_else(|e| {
+            panic!("update over a stale process must succeed via the sweeper: {e}")
+        });
+        assert_eq!(manifest.version, "2.0.0");
+
+        // The stale process was terminated by the sweeper (not exited on
+        // its own — it was booked for 30 s)
+        let status = stale.wait().unwrap();
+        assert!(!status.success(), "the stale sleeper must have been killed");
     }
 
     #[tokio::test]
