@@ -53,6 +53,14 @@ pub struct ComponentView {
     /// Update feed declaration; `None` = the component does not participate
     /// in the update flow (the frontend renders no update button).
     pub update: Option<UpdateDeclaration>,
+    /// Menu icon file name detected at install time (the `icon.<ext>`
+    /// convention, relative to the install directory root; served at
+    /// `/comps/{id}/icon`). `None` = a text-only menu entry. Dev entries
+    /// carry no asset detection.
+    pub icon: Option<String>,
+    /// Logo file name, same convention as [`ComponentView::icon`] (served
+    /// at `/comps/{id}/logo`).
+    pub logo: Option<String>,
 }
 
 impl ComponentView {
@@ -70,6 +78,8 @@ impl ComponentView {
             update: manifest.update,
             source: entry.source,
             project_dir: entry.project_dir.map(|d| d.to_string_lossy().into_owned()),
+            icon: entry.icon,
+            logo: entry.logo,
         }
     }
 }
@@ -129,7 +139,17 @@ pub async fn install_component(
     state: tauri::State<'_, AppState>,
     zip_path: String,
 ) -> Result<ComponentView, String> {
-    let manifest = installer::install(Path::new(&zip_path), &state.layout)
+    let entry = install_and_settle(&state, Path::new(&zip_path)).await?;
+    Ok(ComponentView::from_entry(entry, false))
+}
+
+/// The install tail shared by the disk-path and remote-URL install commands:
+/// package install (the installer's validation / registry / atomic-landing
+/// chain, which also detects and persists the icon/logo assets) → config
+/// settle → read back the authoritative on-disk envelope (it carries the
+/// asset detection result the returned view should show).
+async fn install_and_settle(state: &AppState, zip_path: &Path) -> Result<RegistryEntry, String> {
+    let manifest = installer::install(zip_path, &state.layout)
         .await
         .map_err(|e| e.to_string())?;
     config_plane::reconcile_state(
@@ -139,10 +159,69 @@ pub async fn install_component(
     )
     .await
     .map_err(|e| format!("failed to persist the config state after install: {e}"))?;
-    Ok(ComponentView::from_entry(
-        RegistryEntry::installed(manifest),
-        false,
-    ))
+    registry::load_entry(&state.layout, &manifest.id)
+        .await
+        .map_err(|e| format!("failed to read back the installed component's registry entry: {e}"))?
+        .ok_or_else(|| {
+            format!(
+                "the installed component's registry entry is missing right after install: {}",
+                manifest.id
+            )
+        })
+}
+
+/// Install a component package from a remote http(s) URL. The frontend must
+/// confirm with the user first (this command performs no confirmation of its
+/// own): a URL's origin cannot be verified — the download is trusted only as
+/// far as the installer's package validation goes.
+///
+/// Download → temp file → the same install chain as [`install_component`]
+/// (validation / registry / reconcile) → temp file cleanup (consumed either
+/// way: stale after success, a trap for the next attempt after failure).
+#[tauri::command]
+pub async fn install_component_from_url(
+    state: tauri::State<'_, AppState>,
+    url: String,
+) -> Result<ComponentView, String> {
+    let entry = install_from_url_core(&state, &url).await?;
+    Ok(ComponentView::from_entry(entry, false))
+}
+
+/// The remote-install chain (the command's body, plain-async for tests):
+/// scheme gate → download → temp file → the same install chain as
+/// [`install_component`] (validation / registry / reconcile) → temp file
+/// cleanup (consumed either way: stale after success, a trap for the next
+/// attempt after failure).
+async fn install_from_url_core(state: &AppState, url: &str) -> Result<RegistryEntry, String> {
+    // Scheme gate: only http(s) reaches the HTTP client — a malformed scheme
+    // (or a local path pasted by mistake) fails here with a readable error
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(format!(
+            "not a remote package URL (expected http:// or https://): {url}"
+        ));
+    }
+    let client = package_http_client()?;
+    let bytes = fetch_bytes(&client, url, "the remote package").await?;
+    let zip_path = std::env::temp_dir().join(format!(
+        "superlive-install-{}.zip",
+        crate::auth::generate_token()
+    ));
+    tokio::fs::write(&zip_path, &bytes).await.map_err(|e| {
+        format!(
+            "failed to write the downloaded package to {}: {e}",
+            zip_path.display()
+        )
+    })?;
+    let result = install_and_settle(state, &zip_path).await;
+    if let Err(e) = tokio::fs::remove_file(&zip_path).await {
+        if e.kind() != io::ErrorKind::NotFound {
+            log::warn!(
+                "failed to remove the downloaded package {}: {e}",
+                zip_path.display()
+            );
+        }
+    }
+    result
 }
 
 /// Uninstall a component. Ordering contract: stop the process first, wait
@@ -353,6 +432,17 @@ fn err_chain(e: &reqwest::Error) -> String {
 fn update_http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("failed to build the HTTP client: {e}"))
+}
+
+/// The remote-package download client (the remote-install command): same
+/// proxy semantics as [`update_http_client`], but a 120s total timeout —
+/// a component package is typically orders of magnitude larger than a feed
+/// document.
+fn package_http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| format!("failed to build the HTTP client: {e}"))
 }
@@ -1152,6 +1242,10 @@ pub(crate) async fn create_component_core(
         manifest,
         // Registration timestamp: captured once, at creation
         registered_at: Some(registry::now_ms()),
+        // Dev entries carry no install-time asset detection (the icon/logo
+        // convention covers installed packages)
+        icon: None,
+        logo: None,
     };
     {
         // Persist both the author-editable declaration file and the envelope
@@ -1372,6 +1466,8 @@ mod tests {
             ))
             .unwrap(),
             registered_at: None,
+            icon: None,
+            logo: None,
         }
     }
 
@@ -2128,6 +2224,146 @@ mod tests {
                 .join("superlive-update-deadapp-0.2.0.zip")
                 .exists()
         );
+    }
+
+    // ---------- install_component_from_url (remote install) ----------
+
+    #[tokio::test]
+    async fn remote_install_rejects_non_http_schemes_before_any_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        for url in [
+            "/home/user/comp.zip",
+            "ftp://host/comp.zip",
+            "file:///tmp/comp.zip",
+            "httpx://host/comp.zip",
+            "",
+        ] {
+            let e = install_from_url_core(&state, url)
+                .await
+                .expect_err("a non-http(s) value must be rejected");
+            assert!(
+                e.contains("not a remote package URL"),
+                "unreadable error for {url:?}: {e}"
+            );
+        }
+        // Nothing was installed by the rejected attempts
+        let entries = registry::load_all_entries(&state.layout).await.unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn remote_install_downloads_and_installs_through_the_local_chain() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        state.layout.ensure_dirs().unwrap();
+
+        // A mock origin serving the package zip (with the icon convention
+        // file at the archive root, exactly like a real remote package)
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let zip_body = make_remote_zip(
+            "remoteapp",
+            "remote-ns",
+            "1.0.0",
+            &[("bin", b"#!/bin/sh\n"), ("icon.svg", b"<svg/>")],
+        );
+        {
+            use axum::{Router, routing::get};
+            let router = Router::new().route(
+                "/comp.zip",
+                get(move || {
+                    let body = zip_body.clone();
+                    async move { body }
+                }),
+            );
+            tokio::spawn(async move {
+                let _ = axum::serve(listener, router).await;
+            });
+        }
+
+        let entry = install_from_url_core(&state, &format!("{base}/comp.zip"))
+            .await
+            .expect("the remote install should succeed");
+        assert_eq!(entry.manifest.id, "remoteapp");
+        // The icon convention carried through the download → install chain
+        // into the on-disk envelope
+        assert_eq!(entry.icon.as_deref(), Some("icon.svg"));
+        assert!(
+            state
+                .layout
+                .component_dir("remoteapp")
+                .join("icon.svg")
+                .is_file()
+        );
+        // The downloaded temp zip is consumed (stale after success)
+        let leftovers: Vec<_> = std::fs::read_dir(std::env::temp_dir())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("superlive-install-")
+            })
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temp download leftovers: {:?}",
+            leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_install_unreachable_origin_fails_without_touching_the_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path().join("data")).unwrap();
+        state.layout.ensure_dirs().unwrap();
+
+        // A bound-then-dropped listener: the port answers nothing
+        let dying = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", dying.local_addr().unwrap());
+        drop(dying);
+
+        let e = install_from_url_core(&state, &format!("{base}/comp.zip"))
+            .await
+            .expect_err("an unreachable origin must fail the install");
+        assert!(e.contains("failed to fetch"), "unexpected error: {e}");
+        let entries = registry::load_all_entries(&state.layout).await.unwrap();
+        assert!(entries.is_empty());
+    }
+
+    /// Build a valid component package zip in memory (no update declaration
+    /// — the remote install is package-validation-only), following the
+    /// installer tests' archive shape.
+    fn make_remote_zip(id: &str, ns: &str, version: &str, files: &[(&str, &[u8])]) -> Vec<u8> {
+        use zip::write::SimpleFileOptions;
+        let entries: Vec<String> = files
+            .iter()
+            .map(|(p, c)| {
+                format!(
+                    r#"{{ "path": "{p}", "sha256": "{}" }}"#,
+                    update_sha256_hex(c)
+                )
+            })
+            .collect();
+        let manifest = format!(
+            r#"{{ "id": "{id}", "version": "{version}", "min_shell_version": "0.1.0", "namespace": "{ns}", "display_name": "{id}", "menu": null, "routes": [], "files": [{}] }}"#,
+            entries.join(",")
+        );
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::ZipWriter::new(&mut buf);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            writer.start_file("manifest.json", options).unwrap();
+            std::io::Write::write_all(&mut writer, manifest.as_bytes()).unwrap();
+            for (name, content) in files {
+                writer.start_file(*name, options).unwrap();
+                std::io::Write::write_all(&mut writer, content).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        buf.into_inner()
     }
 
     // ---------- perform_update with a live component process (real-process e2e) ----------

@@ -141,6 +141,7 @@ pub fn run() {
             shell_token,
             commands::list_components,
             commands::install_component,
+            commands::install_component_from_url,
             commands::uninstall_component,
             commands::create_component,
             commands::import_component,

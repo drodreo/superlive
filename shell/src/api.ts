@@ -101,6 +101,16 @@ export const listComponents = (): Observable<ComponentInfo[]> =>
 export const installComponent = (zipPath: string): Observable<ComponentInfo> =>
   invoke$<ComponentInfo>("install_component", { zipPath });
 
+/**
+ * Install a component package from a remote http(s) URL. Call only after the
+ * user confirmed (the URL's origin cannot be verified); the backend performs
+ * the same package validation as a disk install.
+ */
+export const installComponentFromUrl = (
+  url: string,
+): Observable<ComponentInfo> =>
+  invoke$<ComponentInfo>("install_component_from_url", { url });
+
 /** Uninstall a component (stop the process first, then delete data). */
 export const uninstallComponent = (id: string): Observable<void> =>
   invoke$<void>("uninstall_component", { id });
