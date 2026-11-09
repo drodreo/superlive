@@ -347,8 +347,9 @@ fn err_chain(e: &reqwest::Error) -> String {
     chain
 }
 
-/// The update-flow HTTP client: 15s total timeout per request, rustls only
-/// (no native-tls system dependency on any platform).
+/// The update-flow HTTP client: 15s total timeout per request. TLS is
+/// rustls via reqwest defaults; ambient proxy settings (env + OS system
+/// proxy) are honored.
 fn update_http_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))

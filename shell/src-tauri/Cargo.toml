@@ -1,6 +1,6 @@
 [package]
 name = "superlive-shell"
-version = "0.4.9"
+version = "0.4.10"
 default-run = "superlive-shell"
 edition = "2024"
 rust-version = "1.85"
@@ -53,8 +53,9 @@ sha2 = "0.10"
 # both ends parse identically
 toml = "0.8"
 # Component update flow (check_update / download_update): feed + package zip
-# fetch. rustls only — no native-tls system dependency on any platform
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# fetch. Defaults on, matching x-agent: default-tls is rustls upstream (no
+# native-tls system dependency), system proxy support included.
+reqwest = { version = "0.13" }
 # Update feed semver comparison (strict greater = an update is available)
 semver = "1"
 tauri-plugin-log = "2.9.2"
