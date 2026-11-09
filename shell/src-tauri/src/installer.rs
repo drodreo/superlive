@@ -176,6 +176,35 @@ async fn restore_config_backup(
     }
 }
 
+/// User-facing retry context that preserves the original OS error. The
+/// outer io::Error carries the display text; this inner value keeps lock
+/// classification available to the orphan-sweeper gate.
+#[derive(Debug)]
+struct FileLockExhaustedError {
+    message: String,
+    source: std::io::Error,
+}
+
+impl std::fmt::Display for FileLockExhaustedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for FileLockExhaustedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+fn file_lock_os_error(err: &std::io::Error) -> Option<i32> {
+    err.raw_os_error().or_else(|| {
+        err.get_ref()
+            .and_then(|inner| inner.downcast_ref::<FileLockExhaustedError>())
+            .and_then(|wrapped| wrapped.source.raw_os_error())
+    })
+}
+
 /// Whether an IO error is a transient file lock rather than a real
 /// filesystem failure. Windows implementation: antivirus (Defender) or the
 /// OS briefly holds a freshly executed binary — the component process is
@@ -184,7 +213,7 @@ async fn restore_config_backup(
 /// ERROR_ACCESS_DENIED (5).
 #[cfg(windows)]
 fn is_transient_file_lock(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(32 | 5))
+    matches!(file_lock_os_error(err), Some(32 | 5))
 }
 
 /// Whether an IO error is a transient file lock rather than a real
@@ -193,7 +222,7 @@ fn is_transient_file_lock(err: &std::io::Error) -> bool {
 /// errno pair.
 #[cfg(unix)]
 fn is_transient_file_lock(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(14 | 26))
+    matches!(file_lock_os_error(err), Some(14 | 26))
 }
 
 /// Fixed retry schedule for transient file locks: 8 attempts, 250 ms apart
@@ -226,12 +255,16 @@ where
                     .await;
             }
             Err(err) if is_transient_file_lock(&err) => {
+                let message = format!(
+                    "{what} ({}): file lock retries exhausted after {attempt} attempts: {err} — still locked after retries; an antivirus scan usually clears shortly, otherwise check for processes running from the component directory",
+                    path.display()
+                );
                 return Err(std::io::Error::new(
                     err.kind(),
-                    format!(
-                        "{what} ({}): file lock retries exhausted after {attempt} attempts: {err} — still locked after retries; an antivirus scan usually clears shortly, otherwise check for processes running from the component directory",
-                        path.display()
-                    ),
+                    FileLockExhaustedError {
+                        message,
+                        source: err,
+                    },
                 ));
             }
             Err(err) => return Err(err),
@@ -253,8 +286,8 @@ where
 /// component has already been gracefully stopped by the update entry before
 /// install; sibling directories like `<id>2` never match).
 #[cfg(windows)]
-async fn sweep_processes_living_in(dir: &Path) -> usize {
-    use windows_sys::Win32::Foundation::CloseHandle;
+fn sweep_processes_living_in(dir: &Path) -> usize {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
         TH32CS_SNAPPROCESS,
@@ -264,19 +297,13 @@ async fn sweep_processes_living_in(dir: &Path) -> usize {
         QueryFullProcessImageNameW, TerminateProcess,
     };
 
-    /// Full image path of a pid via QueryFullProcessImageNameW (the
-    /// toolhelp entry only carries the base name). None on any failure
-    /// (access denied, already exited, ...): such a process is simply not a
-    /// sweep candidate.
-    fn image_path(pid: u32) -> Option<String> {
+    /// Full image path through an already-open process handle. Keeping the
+    /// handle until after termination prevents PID reuse from redirecting
+    /// the kill to an unrelated process.
+    fn image_path(process: HANDLE) -> Option<String> {
         unsafe {
-            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if process as isize == 0 {
-                return None;
-            }
             let mut buffer = [0u16; 1024];
             let mut len = buffer.len() as u32;
-            let mut name = None;
             if QueryFullProcessImageNameW(
                 process,
                 PROCESS_NAME_WIN32,
@@ -284,10 +311,10 @@ async fn sweep_processes_living_in(dir: &Path) -> usize {
                 &mut len,
             ) != 0
             {
-                name = Some(String::from_utf16_lossy(&buffer[..len as usize]));
+                Some(String::from_utf16_lossy(&buffer[..len as usize]))
+            } else {
+                None
             }
-            CloseHandle(process);
-            name
         }
     }
 
@@ -307,7 +334,7 @@ async fn sweep_processes_living_in(dir: &Path) -> usize {
     )
     .to_lowercase();
 
-    let mut victims: Vec<u32> = Vec::new();
+    let mut swept = 0usize;
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot as isize == -1 {
@@ -318,10 +345,20 @@ async fn sweep_processes_living_in(dir: &Path) -> usize {
         if Process32FirstW(snapshot, &mut entry) != 0 {
             loop {
                 if entry.th32ProcessID != 0 {
-                    if let Some(path) = image_path(entry.th32ProcessID) {
-                        if path.to_lowercase().starts_with(&prefix) {
-                            victims.push(entry.th32ProcessID);
+                    let process = OpenProcess(
+                        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                        0,
+                        entry.th32ProcessID,
+                    );
+                    if process as isize != 0 {
+                        if let Some(path) = image_path(process) {
+                            if path.to_lowercase().starts_with(&prefix)
+                                && TerminateProcess(process, 1) != 0
+                            {
+                                swept += 1;
+                            }
                         }
+                        CloseHandle(process);
                     }
                 }
                 if Process32NextW(snapshot, &mut entry) == 0 {
@@ -330,19 +367,6 @@ async fn sweep_processes_living_in(dir: &Path) -> usize {
             }
         }
         CloseHandle(snapshot);
-    }
-
-    let mut swept = 0usize;
-    for pid in victims {
-        unsafe {
-            let process = OpenProcess(PROCESS_TERMINATE, 0, pid);
-            if process as isize != 0 {
-                if TerminateProcess(process, 1) != 0 {
-                    swept += 1;
-                }
-                CloseHandle(process);
-            }
-        }
     }
     swept
 }
@@ -355,7 +379,7 @@ async fn sweep_processes_living_in(dir: &Path) -> usize {
 /// exotic mounts (FUSE/network filesystems) where rename can still fail
 /// with EBUSY. macOS has no /proc: 0 there.
 #[cfg(unix)]
-async fn sweep_processes_living_in(dir: &Path) -> usize {
+fn sweep_processes_living_in(dir: &Path) -> usize {
     let Ok(canonical) = dir.canonicalize() else {
         return 0;
     };
@@ -495,8 +519,26 @@ async fn install_inner(
             .err();
         let source = match move_aside_err {
             None => None,
+            // Permission, missing-path and other non-lock failures are not a
+            // license to terminate processes. Sweeping is strictly the
+            // exhausted transient-lock fallback.
+            Some(first) if !is_transient_file_lock(&first) => Some(first),
             Some(first) => {
-                let swept = sweep_processes_living_in(&target).await;
+                let sweep_dir = target.clone();
+                let swept = match tokio::task::spawn_blocking(move || {
+                    sweep_processes_living_in(&sweep_dir)
+                })
+                .await
+                {
+                    Ok(swept) => swept,
+                    Err(e) => {
+                        log::warn!(
+                            "stale-process sweep task failed for {}: {e}",
+                            target.display()
+                        );
+                        0
+                    }
+                };
                 if swept == 0 {
                     Some(first)
                 } else {
@@ -782,13 +824,24 @@ mod tests {
         )
     }
 
+    /// Unix self-spawn target: copying a platform binary such as /bin/sleep
+    /// is not portable (macOS kills the copied platform signature), so the
+    /// current test executable acts as the long-lived fixture instead.
+    #[cfg(unix)]
+    #[test]
+    fn stale_sleeper_fixture() {
+        if std::env::var_os("SUPERLIVE_STALE_SLEEPER_FIXTURE").is_some() {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    }
+
     /// Spawn a long-lived process whose executable image lives inside `dir`
     /// — a stale component process stand-in: never registered anywhere,
     /// exactly like an orphan left behind by a dead shell instance.
     /// Windows: a copy of cmd.exe waits on `ping` (ping is an external exe
     /// with no console-input dependency — `timeout` would refuse redirected
     /// stdin and exit immediately, failing to hold any lock). Unix: a copy
-    /// of `sleep`.
+    /// of the current test binary runs `stale_sleeper_fixture`.
     fn spawn_stale_sleeper_in(dir: &std::path::Path) -> std::process::Child {
         let bin = dir.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
@@ -801,8 +854,15 @@ mod tests {
             vec!["/d", "/c", "ping", "-n", "30", "127.0.0.1"],
         );
         #[cfg(unix)]
-        let (source, name, args): (std::path::PathBuf, &str, Vec<&str>) =
-            ("/bin/sleep".into(), "stale-sleeper", vec!["30"]);
+        let (source, name, args): (std::path::PathBuf, &str, Vec<&str>) = (
+            std::env::current_exe().unwrap(),
+            "stale-sleeper",
+            vec![
+                "--exact",
+                "installer::tests::stale_sleeper_fixture",
+                "--nocapture",
+            ],
+        );
         let sleeper = bin.join(name);
         std::fs::copy(&source, &sleeper).unwrap();
         #[cfg(unix)]
@@ -810,10 +870,11 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&sleeper, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        std::process::Command::new(&sleeper)
-            .args(&args)
-            .spawn()
-            .unwrap()
+        let mut command = std::process::Command::new(&sleeper);
+        command.args(&args);
+        #[cfg(unix)]
+        command.env("SUPERLIVE_STALE_SLEEPER_FIXTURE", "1");
+        command.spawn().unwrap()
     }
 
     /// Regression (real-world incident, 2026-11-09): a stale component
@@ -869,6 +930,56 @@ mod tests {
         // its own — it was booked for 30 s)
         let status = stale.wait().unwrap();
         assert!(!status.success(), "the stale sleeper must have been killed");
+    }
+
+    /// A non-lock landing failure must never become a license to kill. Linux
+    /// can observe the old defect directly: its /proc sweeper would kill the
+    /// sleeper even though rename failed with EACCES rather than EBUSY.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn non_lock_install_failure_does_not_sweep_processes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(dir.path());
+        let server = b"#!/bin/sh\n";
+        let v1 = manifest_json("orphanapp", "orphan-ns", "1.0.0", &[("server", server)]);
+        let zip1 = dir.path().join("v1.zip");
+        make_zip(&zip1, &v1, &[("server", server, 0o755)]);
+        install(&zip1, &layout).await.unwrap();
+
+        let mut stale = spawn_stale_sleeper_in(&layout.component_dir("orphanapp"));
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(stale.try_wait().unwrap().is_none());
+
+        let components = layout.components_dir();
+        let original_permissions = std::fs::metadata(&components).unwrap().permissions();
+        std::fs::set_permissions(&components, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let v2 = manifest_json("orphanapp", "orphan-ns", "2.0.0", &[("server", server)]);
+        let zip2 = dir.path().join("v2.zip");
+        make_zip(&zip2, &v2, &[("server", server, 0o755)]);
+        let result = install(&zip2, &layout).await;
+        std::fs::set_permissions(&components, original_permissions).unwrap();
+
+        let permission_error = matches!(
+            &result,
+            Err(InstallError::Io { source, .. })
+                if source.raw_os_error() == Some(libc::EACCES)
+        );
+        let still_running = stale.try_wait().unwrap().is_none();
+        // Reap the fixture before any assertion so a failing regression test
+        // cannot itself leave an orphan behind.
+        let _ = stale.kill();
+        let _ = stale.wait();
+
+        assert!(
+            permission_error,
+            "the fixture must fail at move-aside with EACCES: {result:?}"
+        );
+        assert!(
+            still_running,
+            "a non-lock install error must not terminate processes from the component directory"
+        );
     }
 
     #[tokio::test]
@@ -1318,6 +1429,10 @@ mod tests {
         assert_eq!(
             err.kind(),
             std::io::Error::from_raw_os_error(TEST_TRANSIENT_CODE).kind()
+        );
+        assert!(
+            is_transient_file_lock(&err),
+            "retry context must preserve the transient-lock classification"
         );
         assert!(
             message.contains("os error"),
