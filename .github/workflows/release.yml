@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build:
+    environment: release
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +59,51 @@ jobs:
           cd slsdk-ts && pnpm install --frozen-lockfile
           cd ../shell && pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Import Apple Developer certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          CERTIFICATE_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Prepare notarization API key (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$APPLE_API_KEY_PATH"
+          chmod 600 "$APPLE_API_KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd shell
+          cargo tauri build --bundles ${{ matrix.bundles }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: EF1C3FA7951CFF012D587A683AD7DDE9227D264A
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      - name: Build (other platforms)
+        if: runner.os != 'macOS'
         run: |
           cd shell
           cargo tauri build --bundles ${{ matrix.bundles }}
