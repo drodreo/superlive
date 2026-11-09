@@ -97,7 +97,11 @@ export function UpdateDialog({ onClose }: { onClose: () => void }) {
               {t("update.install", { version: update?.version ?? "" })}
             </button>
           )}
-          {(phase === "uptodate" || phase === "done" || phase === "error") && (
+          {(phase === "checking" ||
+            phase === "available" ||
+            phase === "uptodate" ||
+            phase === "done" ||
+            phase === "error") && (
             <button type="button" onClick={onClose}>
               {t("update.close")}
             </button>
