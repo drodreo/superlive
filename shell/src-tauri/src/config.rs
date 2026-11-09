@@ -8,6 +8,7 @@
 //! ├── sockets/{id}.sock  component UDS listen path (unix)
 //! ├── registry/{id}.json manifest persistence (S5 decision: the manifest is kept outside the install directory)
 //! ├── logs/{id}.log      component stdout/stderr capture (one append-only file per component)
+//! ├── shell-version      last launched shell version (one-shot updater handoff marker)
 //! └── tmp/               install temp workspace (same disk as components, guaranteeing atomic rename)
 //! ```
 
@@ -17,6 +18,9 @@ use std::time::Duration;
 /// Listen port of the shell's embedded HTTP service (fixed constant in v1;
 /// the log prints the actual address; configurability deferred).
 pub const SHELL_PORT: u16 = 39876;
+
+/// Shell log basename shared by the log plugin and the updater handoff.
+pub(crate) const SHELL_LOG_BASENAME: &str = "shell";
 
 /// Total component health-probe timeout: exceeding it counts as a failed
 /// start (process reclaimed).
@@ -45,6 +49,12 @@ impl DataLayout {
         &self.root
     }
 
+    /// Last launched shell version. A changed value authorizes one automatic
+    /// LaunchServices handoff before any component starts after an update.
+    pub(crate) fn shell_version_file(&self) -> PathBuf {
+        self.root.join("shell-version")
+    }
+
     pub fn components_dir(&self) -> PathBuf {
         self.root.join("components")
     }
@@ -62,6 +72,10 @@ impl DataLayout {
     /// process (see lifecycle's spawn).
     pub fn logs_dir(&self) -> PathBuf {
         self.root.join("logs")
+    }
+
+    pub(crate) fn shell_log_file(&self) -> PathBuf {
+        self.logs_dir().join(format!("{SHELL_LOG_BASENAME}.log"))
     }
 
     pub fn tmp_dir(&self) -> PathBuf {

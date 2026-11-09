@@ -16,6 +16,7 @@
 //! - [`supervisor`]: component recovery at shell startup (started per policy)
 //! - [`server`]: embedded HTTP service assembly
 //! - [`commands`]: tauri command bridge (UI ↔ core)
+//! - [`self_update`]: updater-specific process restart handoff
 //!
 //! UI containers (module/iframe tiers, webview injection) belong to module 3,
 //! second stage.
@@ -29,11 +30,12 @@ pub mod import;
 pub mod installer;
 pub mod lifecycle;
 pub mod registry;
+mod self_update;
 pub mod server;
 pub mod subscriptions;
 pub mod supervisor;
 
-use config::DataLayout;
+use config::{DataLayout, SHELL_LOG_BASENAME};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
@@ -87,18 +89,17 @@ pub fn run() {
             // The data directory is resolved by tauri per platform convention
             // (Linux: ~/.local/share/<identifier>)
             let data_dir: PathBuf = app.path().app_data_dir()?;
-            let mut state = AppState::new(data_dir)?;
-            // Attach the log sink as the first step after layout resolution so
-            // every shell-side diagnostic (gateway forwarding, health probe,
-            // spawn failures) lands in {data_root}/logs/shell.log next to the
-            // component logs — in GUI mode there is no console, so without
-            // this sink the log facade has no output at all.
+            let layout = DataLayout::new(data_dir.clone());
+            layout.ensure_dirs()?;
+            // Attach the log sink before the updater handoff so preparation
+            // failures and the post-exit launch fallback are diagnosable in
+            // {data_root}/logs/shell.log even without a GUI console.
             app.handle().plugin(
                 tauri_plugin_log::Builder::new()
                     .targets([
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Folder {
-                            path: state.layout.logs_dir(),
-                            file_name: Some("shell".into()),
+                            path: layout.logs_dir(),
+                            file_name: Some(SHELL_LOG_BASENAME.into()),
                         }),
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                     ])
@@ -106,6 +107,14 @@ pub fn run() {
                     .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                     .build(),
             )?;
+            match self_update::handoff_updated_shell(app.handle(), &data_dir) {
+                Ok(true) => return Ok(()),
+                Ok(false) => {}
+                Err(e) => {
+                    log::warn!("updater handoff failed; continuing normal startup: {e}");
+                }
+            }
+            let mut state = AppState::new(data_dir)?;
             // Shell→UI push channel (component exit broadcast); tests keep None
             state.app = Some(app.handle().clone());
             log::info!("shell data directory: {}", state.layout.root().display());
