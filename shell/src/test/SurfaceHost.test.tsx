@@ -62,6 +62,8 @@ function makeInfo(overrides: Partial<ComponentInfo> = {}): ComponentInfo {
     update: null,
     source: "installed",
     project_dir: null,
+    icon: null,
+    logo: null,
     ...overrides,
   };
 }

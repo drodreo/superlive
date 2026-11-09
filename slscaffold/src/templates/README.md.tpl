@@ -145,6 +145,21 @@ In the superlive shell: open the component manager (sidebar bottom) → install 
 component. The shell's managed build/package flow invokes `scripts/superlive.build`,
 registers the component and mounts its menu entry and route.
 
+## Icons
+
+The shell renders your component's menu entry with an icon when the package
+ships one at the **install directory root** (the zip's top level):
+
+    icon.svg    ← menu icon (svg preferred)
+    logo.svg    ← logo (kept alongside the icon for future surfaces)
+
+File-name convention: `icon.<ext>` and `logo.<ext>` — one file each, any
+web-renderable image format (svg / png / gif / webp / jpg / jpeg / avif /
+bmp / ico). When several extensions of the same base name ship together, the
+shell picks by fixed priority: svg first, then png, gif, webp, jpg, jpeg,
+avif, bmp, ico. Ship no such file and the menu entry stays text-only —
+nothing else changes.
+
 #@if !IMPORTED
 ## SDK dependency mode
 

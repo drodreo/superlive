@@ -62,6 +62,14 @@ export interface ComponentInfo {
   source: ComponentSource;
   /** The project directory for dev entries; null for installed. */
   project_dir: string | null;
+  /**
+   * Menu icon file name detected at install time (the `icon.<ext>`
+   * convention, relative to the install directory root; served at
+   * `/comps/{id}/icon`). null = render a text-only menu entry.
+   */
+  icon: string | null;
+  /** Logo file name, same convention as `icon` (served at `/comps/{id}/logo`). */
+  logo: string | null;
 }
 
 // ---------- Shell-level token: a singleton fetched once at startup ----------

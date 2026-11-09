@@ -250,6 +250,18 @@ body {
   background: var(--sidebar-hover);
 }
 
+/* Install-time detected menu icon (the `icon.<ext>` convention): a compact
+   inline image aligned with the entry text; the button stays text-first
+   (icon + label on one line). */
+.menu button .menu-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  vertical-align: -3px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
 .menu button.active {
   /* Translucent selection: a tint over the glass, not a solid fill —
      the frost keeps showing through; restrained emphasis: medium weight
@@ -883,6 +895,15 @@ button.link {
 .modal-body p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* The remote-install confirmation modal's URL line: monospace and muted so
+   the address reads as data (what will be downloaded), not prose */
+.modal-body .remote-url {
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-secondary, var(--text));
 }
 
 /* Component log viewer (the management page's log modal): monospace,

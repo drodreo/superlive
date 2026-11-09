@@ -156,6 +156,20 @@ export default function App() {
                   )
                 }
               >
+                {/* Install-time detected menu icon (`icon.<ext>` at the
+                    install root, served by the shell's asset alias
+                    /comps/{id}/icon); onError hides the broken image so a
+                    deleted file degrades back to the text-only entry. */}
+                {c.icon && (
+                  <img
+                    className="menu-icon"
+                    src={`${SHELL_ORIGIN}/comps/${c.id}/icon`}
+                    alt=""
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                )}
                 {title}
               </button>
             );

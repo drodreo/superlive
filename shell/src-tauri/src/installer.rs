@@ -134,6 +134,44 @@ pub async fn install(
     result
 }
 
+/// The install-time asset detection result (the `icon.<ext>` / `logo.<ext>`
+/// naming convention): file names relative to the install directory root,
+/// None = the package ships no such file.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ComponentAssets {
+    pub icon: Option<String>,
+    pub logo: Option<String>,
+}
+
+/// The `icon.<ext>` / `logo.<ext>` convention: one base name per asset,
+/// extension whitelist in fixed priority order (svg first — it scales and
+/// theme-adapts best; raster formats follow). Web-renderable image formats
+/// only. Multiple files coexisting = the first whitelist hit wins; files
+/// with extensions outside the whitelist are ignored (no asset).
+pub const ASSET_EXTENSIONS: [&str; 9] = [
+    "svg", "png", "gif", "webp", "jpg", "jpeg", "avif", "bmp", "ico",
+];
+
+/// Detect the package's assets by scanning the install directory root for
+/// `icon.<ext>` / `logo.<ext>` (the whitelist in [`ASSET_EXTENSIONS`],
+/// priority order). Fully synchronous (a handful of stat calls) — call from
+/// a blocking context.
+pub fn detect_assets_sync(dir: &Path) -> ComponentAssets {
+    let detect = |base: &str| -> Option<String> {
+        for ext in ASSET_EXTENSIONS {
+            let name = format!("{base}.{ext}");
+            if dir.join(&name).is_file() {
+                return Some(name);
+            }
+        }
+        None
+    };
+    ComponentAssets {
+        icon: detect("icon"),
+        logo: detect("logo"),
+    }
+}
+
 /// Parse a "major.minor.patch" three-segment version (missing segments
 /// count as 0; returns None on parse failure).
 pub(crate) fn parse_semver(s: &str) -> Option<(u64, u64, u64)> {
@@ -655,21 +693,27 @@ async fn install_inner(
         }
     }
 
-    // Registration persistence: persist_manifest_sync is synchronous IO,
-    // wrapped in the blocking thread pool
+    // Registration persistence + asset detection: persist_manifest_sync and
+    // detect_assets_sync are synchronous IO, wrapped in the blocking thread
+    // pool (one hop: detection reads the landed directory root, persistence
+    // writes the envelope carrying its result)
     {
         // The path in the error message is computed up front: layout/manifest
         // are about to be moved into the closure
         let registry_path = layout.registry_file(&manifest.id).display().to_string();
         let layout = layout.clone();
         let manifest = manifest.clone();
-        tokio::task::spawn_blocking(move || registry::persist_manifest_sync(&layout, &manifest))
-            .await
-            .map_err(|_| InstallError::Join)?
-            .map_err(|source| InstallError::Io {
-                path: registry_path,
-                source,
-            })?;
+        let target = target.clone();
+        tokio::task::spawn_blocking(move || {
+            let assets = detect_assets_sync(&target);
+            registry::persist_manifest_sync(&layout, &manifest, &assets)
+        })
+        .await
+        .map_err(|_| InstallError::Join)?
+        .map_err(|source| InstallError::Io {
+            path: registry_path,
+            source,
+        })?;
     }
 
     Ok(manifest)
@@ -833,6 +877,56 @@ mod tests {
         if std::env::var_os("SUPERLIVE_STALE_SLEEPER_FIXTURE").is_some() {
             std::thread::sleep(std::time::Duration::from_secs(30));
         }
+    }
+
+    // ---------- install-time asset detection (icon.<ext> / logo.<ext>) ----------
+
+    #[test]
+    fn detects_no_assets_when_the_root_ships_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let assets = detect_assets_sync(dir.path());
+        assert_eq!(assets, ComponentAssets::default());
+    }
+
+    #[test]
+    fn detects_icon_and_logo_independently() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("icon.png"), b"png").unwrap();
+        let assets = detect_assets_sync(dir.path());
+        assert_eq!(assets.icon.as_deref(), Some("icon.png"));
+        assert_eq!(assets.logo, None, "logo must be detected independently");
+
+        std::fs::write(dir.path().join("logo.ico"), b"ico").unwrap();
+        let assets = detect_assets_sync(dir.path());
+        assert_eq!(assets.icon.as_deref(), Some("icon.png"));
+        assert_eq!(assets.logo.as_deref(), Some("logo.ico"));
+    }
+
+    #[test]
+    fn svg_wins_over_every_other_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        for ext in ["ico", "bmp", "png", "gif", "webp", "svg"] {
+            std::fs::write(dir.path().join(format!("icon.{ext}")), b"x").unwrap();
+        }
+        let assets = detect_assets_sync(dir.path());
+        assert_eq!(assets.icon.as_deref(), Some("icon.svg"));
+        // And with svg removed, the whitelist's fixed order picks the next
+        // one (png) — the priority is positional, not alphabetical
+        std::fs::remove_file(dir.path().join("icon.svg")).unwrap();
+        let assets = detect_assets_sync(dir.path());
+        assert_eq!(assets.icon.as_deref(), Some("icon.png"));
+    }
+
+    #[test]
+    fn extensions_outside_the_whitelist_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("icon.txt"), b"text").unwrap();
+        std::fs::write(dir.path().join("icon.exe"), b"exe").unwrap();
+        std::fs::write(dir.path().join("icon.svg.png.bak"), b"bak").unwrap();
+        // A directory named like an asset is not an asset
+        std::fs::create_dir_all(dir.path().join("logo.svg")).unwrap();
+        let assets = detect_assets_sync(dir.path());
+        assert_eq!(assets, ComponentAssets::default());
     }
 
     /// Spawn a long-lived process whose executable image lives inside `dir`
@@ -1061,6 +1155,51 @@ mod tests {
 
         // Landing check three: no workspace leftovers
         assert_eq!(std::fs::read_dir(layout.tmp_dir()).unwrap().count(), 0);
+    }
+
+    /// The install chain detects the icon/logo convention at the landed
+    /// directory root and records the file names in the registry envelope —
+    /// the update chain shares this installer, so an upgrade refreshes the
+    /// asset record the same way.
+    #[tokio::test]
+    async fn install_records_detected_assets_in_the_envelope() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(dir.path());
+        let bin = b"#!/bin/sh\n";
+        let icon = b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>";
+        let mj = manifest_json(
+            "iconapp",
+            "icon-ns",
+            "1.0.0",
+            &[("bin", bin), ("icon.svg", icon)],
+        );
+        let zip_path = dir.path().join("pkg.zip");
+        make_zip(
+            &zip_path,
+            &mj,
+            &[("bin", bin, 0o755), ("icon.svg", icon, 0o644)],
+        );
+
+        install(&zip_path, &layout).await.unwrap();
+        let stored: crate::registry::RegistryEntry =
+            serde_json::from_slice(&std::fs::read(layout.registry_file("iconapp")).unwrap())
+                .unwrap();
+        assert_eq!(stored.icon.as_deref(), Some("icon.svg"));
+        assert_eq!(stored.logo, None);
+        // The file sits at the install directory root — the asset alias
+        // route's data source
+        assert!(layout.component_dir("iconapp").join("icon.svg").is_file());
+
+        // Re-install without the icon (an upgrade that drops the asset):
+        // the envelope follows the new package, not the previous record
+        let mj2 = manifest_json("iconapp", "icon-ns", "1.1.0", &[("bin", bin)]);
+        let zip2 = dir.path().join("pkg2.zip");
+        make_zip(&zip2, &mj2, &[("bin", bin, 0o755)]);
+        install(&zip2, &layout).await.unwrap();
+        let stored: crate::registry::RegistryEntry =
+            serde_json::from_slice(&std::fs::read(layout.registry_file("iconapp")).unwrap())
+                .unwrap();
+        assert_eq!(stored.icon, None, "a dropped asset clears the record");
     }
 
     /// Upgrade preserves config (configuration-plane contract): config.toml
