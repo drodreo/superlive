@@ -464,6 +464,7 @@ body {
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--bg-panel);
+  color: var(--text);
   font-size: 12px;
   cursor: pointer;
 }
@@ -681,6 +682,7 @@ body {
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--bg-panel);
+  color: var(--text);
   font-size: 13px;
   cursor: pointer;
 }
@@ -880,6 +882,7 @@ button.link {
 
 .modal-body p {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Component log viewer (the management page's log modal): monospace,
@@ -1333,6 +1336,7 @@ button.link {
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--bg-panel);
+  color: var(--text);
   font-size: 13px;
   cursor: pointer;
 }
