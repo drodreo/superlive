@@ -414,6 +414,10 @@ pub(crate) async fn import_core(
         manifest: inspection.manifest,
         // Registration timestamp: captured once, at creation
         registered_at: Some(registry::now_ms()),
+        // Dev entries carry no install-time asset detection (the icon/logo
+        // convention covers installed packages)
+        icon: None,
+        logo: None,
     };
     {
         let layout = state.layout.clone();
@@ -866,6 +870,8 @@ mod tests {
             ))
             .unwrap(),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         std::fs::write(
             state.layout.registry_file(id),

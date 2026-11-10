@@ -1,6 +1,6 @@
 [package]
 name = "superlive-shell"
-version = "0.4.14"
+version = "0.5.0"
 default-run = "superlive-shell"
 edition = "2024"
 rust-version = "1.85"
@@ -14,7 +14,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# protocol-asset enables the `asset://` custom protocol (component webviews
+# read local media through it); the config block alone is a no-op without it
+# (tauri gates both scope init and scheme registration behind this feature).
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
@@ -93,3 +96,8 @@ tower = "0.5"
 # broadcast feed as chunked NDJSON, which needs a futures_core::Stream impl
 # (already in the dependency tree via axum/slsdk-rs — no new code compiled in)
 futures-core = "0.3"
+# Asset-scope tests: tauri's `test` feature is an empty marker that exposes
+# `tauri::test::mock_app` (headless MockRuntime app, same pattern tauri's own
+# protocol/asset.rs tests use). Unified with [dependencies] tauri in test
+# builds only; production builds keep the [dependencies] feature set.
+tauri = { version = "2", features = ["test"] }

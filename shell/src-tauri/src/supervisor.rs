@@ -271,10 +271,12 @@ mod tests {
         let bad = manifest_with_command("badapp", "badns", "/nonexistent/binary");
         // persist_manifest_sync is synchronous IO and the doc forbids calling
         // it directly from async — the test side obeys the same rule
-        tokio::task::spawn_blocking(move || registry::persist_manifest_sync(&layout, &bad))
-            .await
-            .unwrap()
-            .unwrap();
+        tokio::task::spawn_blocking(move || {
+            registry::persist_manifest_sync(&layout, &bad, &Default::default())
+        })
+        .await
+        .unwrap()
+        .unwrap();
 
         tokio::time::timeout(Duration::from_secs(20), start_all(&state))
             .await
@@ -298,10 +300,12 @@ mod tests {
         std::fs::create_dir_all(state.layout.component_dir("manual")).unwrap();
         let layout = state.layout.clone();
         let m = manifest_with_command("manual", "manualns", "/bin/sleep");
-        tokio::task::spawn_blocking(move || registry::persist_manifest_sync(&layout, &m))
-            .await
-            .unwrap()
-            .unwrap();
+        tokio::task::spawn_blocking(move || {
+            registry::persist_manifest_sync(&layout, &m, &Default::default())
+        })
+        .await
+        .unwrap()
+        .unwrap();
         config_plane::save_meta(
             &state.layout,
             "manual",
@@ -339,10 +343,12 @@ mod tests {
         // timeout (far beyond the test budget) — a test timeout is the signal
         // that the gate failed
         let m = manifest_with_required("gated", "gatedns", "/bin/sleep");
-        tokio::task::spawn_blocking(move || registry::persist_manifest_sync(&layout, &m))
-            .await
-            .unwrap()
-            .unwrap();
+        tokio::task::spawn_blocking(move || {
+            registry::persist_manifest_sync(&layout, &m, &Default::default())
+        })
+        .await
+        .unwrap()
+        .unwrap();
 
         tokio::time::timeout(Duration::from_secs(10), start_all(&state))
             .await

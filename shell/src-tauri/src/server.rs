@@ -144,10 +144,68 @@ async fn comps_static(
     let Some((id, rel)) = rest.split_once('/') else {
         return not_found();
     };
+    // Asset aliases (`icon` / `logo`, no extension — the URL survives
+    // upgrades that switch the file extension): resolved through the
+    // registry's install-time detection to the real file at the install
+    // directory root, which lies outside the ui/ static root and therefore
+    // cannot go through the generic static path below.
+    if rel == "icon" || rel == "logo" {
+        return serve_component_asset(&state, id, rel).await;
+    }
     let base = static_base(&state, id).await;
     let path = base.join(rel);
     // Traversal guard: after canonicalization the path must still land
     // inside that component's static root
+    let (canonical, canonical_base) = match (
+        tokio::fs::canonicalize(&path).await,
+        tokio::fs::canonicalize(&base).await,
+    ) {
+        (Ok(p), Ok(b)) => (p, b),
+        _ => return not_found(),
+    };
+    if !canonical.starts_with(&canonical_base) {
+        return not_found();
+    }
+    match tokio::fs::read(&canonical).await {
+        Ok(bytes) => ([(header::CONTENT_TYPE, static_mime(&canonical))], bytes).into_response(),
+        Err(_) => not_found(),
+    }
+}
+
+/// Serve one install-time detected asset (`/comps/{id}/icon` or
+/// `/comps/{id}/logo`): the registry record maps the alias to the real file
+/// name at the install directory root. No record / no detected asset /
+/// unreadable file = 404 (the frontend renders a text-only entry for such
+/// components).
+async fn serve_component_asset(state: &AppState, id: &str, alias: &str) -> Response {
+    use axum::http::header;
+    let not_found = || (StatusCode::NOT_FOUND, "not found").into_response();
+    let Ok(Some(entry)) = crate::registry::load_entry(&state.layout, id).await else {
+        return not_found();
+    };
+    let Some(file_name) = (if alias == "icon" {
+        entry.icon
+    } else {
+        entry.logo
+    }) else {
+        return not_found();
+    };
+    // The asset lives at the install directory root (installed entries);
+    // dev entries carry no asset detection, so this branch never fires for
+    // them — the project-dir arm is the defensive symmetry of
+    // [`static_base`].
+    let base = match &entry.source {
+        crate::registry::ComponentSource::Dev => match &entry.project_dir {
+            Some(dir) => dir.clone(),
+            None => state.layout.component_dir(id),
+        },
+        _ => state.layout.component_dir(id),
+    };
+    let path = base.join(file_name);
+    // The file name comes from the registry record written by the install
+    // flow (a bare `icon.<ext>` / `logo.<ext>` basename), but canonicalize +
+    // prefix-check anyway: the guard costs two syscalls and closes the door
+    // on hand-edited records.
     let (canonical, canonical_base) = match (
         tokio::fs::canonicalize(&path).await,
         tokio::fs::canonicalize(&base).await,
@@ -193,6 +251,8 @@ fn static_mime(path: &std::path::Path) -> &'static str {
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
         "webp" => "image/webp",
+        "avif" => "image/avif",
+        "bmp" => "image/bmp",
         "ico" => "image/x-icon",
         "woff" => "font/woff",
         "woff2" => "font/woff2",
@@ -444,6 +504,121 @@ mod tests {
         );
     }
 
+    // ---------- /comps asset aliases (icon / logo) ----------
+
+    /// Hand-writes one installed registration envelope with the given asset
+    /// names (the minimal shape bypassing the install flow).
+    fn write_installed_entry(
+        state: &AppState,
+        id: &str,
+        ns: &str,
+        icon: Option<&str>,
+        logo: Option<&str>,
+    ) {
+        let entry = crate::registry::RegistryEntry {
+            source: crate::registry::ComponentSource::Installed,
+            project_dir: None,
+            manifest: serde_json::from_str(&format!(
+                r#"{{
+                "id": "{id}",
+                "version": "0.1.0",
+                "min_shell_version": "0.1.0",
+                "namespace": "{ns}",
+                "display_name": "{id}",
+                "ui": {{ "ui_type": "module", "entry": "entry.js" }},
+                "menu": null,
+                "routes": [],
+                "launch": null,
+                "files": [ {{ "path": "README.md", "sha256": "aa" }} ]
+            }}"#
+            ))
+            .unwrap(),
+            registered_at: None,
+            icon: icon.map(|s| s.to_string()),
+            logo: logo.map(|s| s.to_string()),
+        };
+        std::fs::create_dir_all(state.layout.registry_dir()).unwrap();
+        std::fs::write(
+            state.layout.registry_file(id),
+            serde_json::to_vec(&entry).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn comp_asset_aliases_serve_install_root_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = Arc::new(AppState::new(dir.path()).unwrap());
+        // The assets live at the install directory root — outside the ui/
+        // static root, reachable only through the alias URLs
+        let comps = state.layout.component_dir("iconapp");
+        std::fs::create_dir_all(comps.join("ui")).unwrap();
+        std::fs::write(comps.join("ui/index.html"), "<html>ui</html>").unwrap();
+        std::fs::write(comps.join("icon.svg"), b"<svg/>").unwrap();
+        std::fs::write(comps.join("logo.png"), b"png").unwrap();
+        write_installed_entry(
+            &state,
+            "iconapp",
+            "iconns",
+            Some("icon.svg"),
+            Some("logo.png"),
+        );
+
+        let router = build_router(Arc::clone(&state));
+
+        // The alias URL (no extension — stable across extension switches)
+        // serves the detected file with its real content type
+        let req = Request::builder()
+            .uri("/comps/iconapp/icon")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get(header::CONTENT_TYPE).unwrap(),
+            "image/svg+xml"
+        );
+        assert_eq!(body_bytes(res).await, b"<svg/>");
+
+        let req = Request::builder()
+            .uri("/comps/iconapp/logo")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get(header::CONTENT_TYPE).unwrap(),
+            "image/png"
+        );
+        assert_eq!(body_bytes(res).await, b"png");
+
+        // The real file name stays outside the URL space (it is outside the
+        // ui/ root; the alias is the only door)
+        let req = Request::builder()
+            .uri("/comps/iconapp/icon.svg")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        // A component without a detected icon → 404 (text-only rendering)
+        write_installed_entry(&state, "plainapp", "plainns", None, None);
+        let req = Request::builder()
+            .uri("/comps/plainapp/icon")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        // An unknown component id → 404
+        let req = Request::builder()
+            .uri("/comps/nowhere/icon")
+            .body(Body::empty())
+            .unwrap();
+        let res = router.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
     // ---------- /comps dev data source ----------
 
     /// Hand-writes one dev registration envelope (the minimal shape bypassing the creation flow).
@@ -467,6 +642,8 @@ mod tests {
             ))
             .unwrap(),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         std::fs::create_dir_all(state.layout.registry_dir()).unwrap();
         std::fs::write(

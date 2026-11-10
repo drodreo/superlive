@@ -23,6 +23,7 @@ import {
   checkUpdate,
   getComponentState,
   installComponent,
+  installComponentFromUrl,
   listComponents,
   performUpdate,
   readComponentLog,
@@ -68,6 +69,10 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   const [message, setMessage] = useState<I18nMessage | null>(null);
   const [busy, setBusy] = useState(false);
   const [zipPath, setZipPath] = useState("");
+  // Remote-install confirmation: the http(s) value recognized in the path
+  // input, held here while the confirmation modal is up — the download (a
+  // source the shell cannot verify) starts only after the user confirms
+  const [remoteConfirmUrl, setRemoteConfirmUrl] = useState<string | null>(null);
   // Target component id for the post-install "Start now" prompt / the
   // launch options dialog
   const [installPromptId, setInstallPromptId] = useState<string | null>(null);
@@ -186,11 +191,32 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
   const installByPath = () => {
     const path = zipPath.trim();
     if (!path) return;
+    // Unified path input: an http(s) value is recognized as a remote
+    // package URL. A remote source cannot be verified, so the install waits
+    // for an explicit confirmation (the modal below) before any download.
+    if (/^https?:\/\//i.test(path)) {
+      setRemoteConfirmUrl(path);
+      return;
+    }
     void run(installComponent(path), "mgr.installed", { path }).then((info) => {
       setZipPath("");
       afterChange();
       if (info) setInstallPromptId(info.id);
     });
+  };
+
+  /** Confirmation modal accepted → download + install through the remote chain. */
+  const confirmRemoteInstall = () => {
+    const url = remoteConfirmUrl;
+    if (!url) return;
+    setRemoteConfirmUrl(null);
+    void run(installComponentFromUrl(url), "mgr.installedRemote", { url }).then(
+      (info) => {
+        setZipPath("");
+        afterChange();
+        if (info) setInstallPromptId(info.id);
+      },
+    );
   };
 
   /** The component's current four-state: states hit first; missing entries fall back to the running boolean. */
@@ -554,6 +580,32 @@ export function ComponentManager({ onChanged }: { onChanged?: () => void }) {
             })}
           </p>
           {updateDialog.notes && <p>{updateDialog.notes}</p>}
+        </Modal>
+      )}
+
+      {/* Remote install confirmation: the URL cannot be verified — an
+          explicit accept is the only download trigger */}
+      {remoteConfirmUrl && (
+        <Modal
+          title={t("mgr.remoteConfirmTitle")}
+          footer={
+            <>
+              <button type="button" onClick={() => setRemoteConfirmUrl(null)}>
+                {t("mgr.remoteCancel")}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={confirmRemoteInstall}
+              >
+                {t("mgr.remoteConfirm")}
+              </button>
+            </>
+          }
+        >
+          <p>{t("mgr.remoteConfirmBody")}</p>
+          <p className="remote-url">{remoteConfirmUrl}</p>
         </Modal>
       )}
 

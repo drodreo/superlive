@@ -3,9 +3,9 @@
 //! Renders the standard component skeleton (Rust backend / React ui / build
 //! script / README) from templates embedded at compile time, in three shapes:
 //!
-//! - [`ComponentShape::FrontendAndBackend`] — server + ui + build script + README
-//! - [`ComponentShape::FrontendOnly`] — ui + build script + README (no server/)
-//! - [`ComponentShape::BackendOnly`] — server + build script + README (no ui/)
+//! - [`ComponentShape::FrontendAndBackend`] — server + ui + build script + info.json + README
+//! - [`ComponentShape::FrontendOnly`] — ui + build script + info.json + README (no server/)
+//! - [`ComponentShape::BackendOnly`] — server + build script + info.json + README (no ui/)
 //!
 //! The generated project directory is a plain filesystem tree: the dev manifest
 //! assembly and the shell-side registration are the caller's responsibility (the
@@ -33,6 +33,10 @@ use std::path::{Path, PathBuf};
 /// Embedded template assets (single source of truth for generated content).
 mod templates {
     pub const README: &str = include_str!("templates/README.md.tpl");
+    /// Free-form developer description file (suggested fields, nothing
+    /// enforced); the shell neither parses nor requires it — a future
+    /// surface (the component info card) will read it.
+    pub const INFO_JSON: &str = include_str!("templates/info.json.tpl");
     pub const SERVER_CARGO_TOML: &str = include_str!("templates/server_Cargo.toml.tpl");
     pub const SERVER_MAIN_RS: &str = include_str!("templates/server_main.rs.tpl");
     /// TypeScript backend entry shared by the [`BackendTemplate::Deno`] and
@@ -354,6 +358,16 @@ fn file_plan(shape: ComponentShape, template: BackendTemplate) -> Vec<FilePlan> 
         template: templates::BUILD_SCRIPT_PS1,
         rel_path: "scripts/superlive.build",
         conditional: true,
+        exec_bit: false,
+    });
+    // Free-form developer description file at the project root: generated
+    // with suggested placeholder fields, freely editable/deletable — the
+    // shell does not parse or require it (the README documents the
+    // convention)
+    plan.push(FilePlan {
+        template: templates::INFO_JSON,
+        rel_path: "info.json",
+        conditional: false,
         exec_bit: false,
     });
     plan.push(FilePlan {

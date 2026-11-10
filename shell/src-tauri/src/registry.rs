@@ -49,6 +49,17 @@ pub struct RegistryEntry {
     /// sort last).
     #[serde(default)]
     pub registered_at: Option<u64>,
+    /// Menu icon file name (relative to the install directory root),
+    /// detected at install time by the `icon.<ext>` naming convention
+    /// ([`crate::installer::detect_assets_sync`]). Absent in records written
+    /// before the field existed (reads as None = the pre-icon behavior: the
+    /// frontend renders a text-only menu entry).
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Logo file name (relative to the install directory root), same
+    /// convention and back-compat story as [`RegistryEntry::icon`].
+    #[serde(default)]
+    pub logo: Option<String>,
 }
 
 impl RegistryEntry {
@@ -63,6 +74,11 @@ impl RegistryEntry {
             project_dir: None,
             manifest,
             registered_at: Some(now_ms()),
+            // The install flow's persistence path overwrites these with the
+            // asset detection result right after assembly
+            // (persist_manifest_sync); this constructor alone yields None
+            icon: None,
+            logo: None,
         }
     }
 }
@@ -210,12 +226,18 @@ impl Default for Registry {
 /// Manifest persistence: writes an `Installed` envelope to
 /// registry/{id}.json (creates the directory if missing). Synchronous IO —
 /// called only from installer's spawn_blocking context; calling it directly
-/// in an async context is forbidden.
+/// in an async context is forbidden. `assets` carries the install-time
+/// asset detection result (icon/logo file names; None = the package ships
+/// none).
 pub fn persist_manifest_sync(
     layout: &DataLayout,
     manifest: &ComponentManifest,
+    assets: &crate::installer::ComponentAssets,
 ) -> std::io::Result<()> {
-    persist_entry_sync(layout, &RegistryEntry::installed(manifest.clone()))
+    let mut entry = RegistryEntry::installed(manifest.clone());
+    entry.icon = assets.icon.clone();
+    entry.logo = assets.logo.clone();
+    persist_entry_sync(layout, &entry)
 }
 
 /// Envelope persistence (the creation flow's dev registration writes
@@ -241,8 +263,10 @@ fn parse_entry(bytes: &[u8]) -> Result<RegistryEntry, serde_json::Error> {
             project_dir: None,
             manifest: serde_json::from_value(value)?,
             // The bare form predates the envelope, hence predates the
-            // registration timestamp as well
+            // registration timestamp and the asset names as well
             registered_at: None,
+            icon: None,
+            logo: None,
         })
     }
 }
@@ -355,6 +379,10 @@ async fn validate_and_project(record: RegistryEntry) -> Result<RegistryEntry, St
                     // The projection replaces the declaration snapshot only;
                     // lifecycle identity facts pass through untouched
                     registered_at: record.registered_at,
+                    // Dev entries carry no install-time asset detection
+                    // (the icon/logo convention covers installed packages)
+                    icon: None,
+                    logo: None,
                 }),
                 Err(reason) => {
                     log::warn!(
@@ -654,6 +682,10 @@ pub async fn refresh_dev_entry(
         // timestamp is a create-time fact and must survive the rebuild
         // (this record is persisted back right below)
         registered_at: entry.registered_at,
+        // Dev entries carry no install-time asset detection (the icon/logo
+        // convention covers installed packages)
+        icon: None,
+        logo: None,
     };
     {
         let layout = layout.clone();
@@ -831,7 +863,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let layout = DataLayout::new(dir.path());
         let m = manifest("xatodo", "todo");
-        persist_manifest_sync(&layout, &m).unwrap();
+        persist_manifest_sync(&layout, &m, &Default::default()).unwrap();
 
         let loaded = load_all_entries(&layout).await.unwrap();
         assert_eq!(loaded.len(), 1);
@@ -849,6 +881,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn asset_names_roundtrip_and_legacy_records_read_as_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(dir.path());
+
+        // New-form record: the asset names persist and read back
+        let mut entry = RegistryEntry::installed(manifest("iconapp", "icon-ns"));
+        entry.icon = Some("icon.svg".to_string());
+        entry.logo = Some("logo.png".to_string());
+        persist_entry_sync(&layout, &entry).unwrap();
+        let loaded = load_all_entries(&layout).await.unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].icon.as_deref(), Some("icon.svg"));
+        assert_eq!(loaded[0].logo.as_deref(), Some("logo.png"));
+
+        // Legacy record (written before the asset fields existed): serde
+        // default fills None — the pre-icon text-only behavior. The bare
+        // manifest form (pre-envelope) takes the parse fallback, which also
+        // fills None.
+        std::fs::write(
+            layout.registry_file("legacy"),
+            serde_json::to_string(&manifest("legacy", "legacy")).unwrap(),
+        )
+        .unwrap();
+        let loaded = load_all_entries(&layout).await.unwrap();
+        let legacy_entry = loaded.iter().find(|e| e.manifest.id == "legacy").unwrap();
+        assert_eq!(legacy_entry.icon, None);
+        assert_eq!(legacy_entry.logo, None);
+    }
+
+    #[tokio::test]
     async fn dev_entry_roundtrip_keeps_project_dir() {
         let dir = tempfile::tempdir().unwrap();
         let layout = DataLayout::new(dir.path());
@@ -858,6 +920,8 @@ mod tests {
             project_dir: Some(project.clone()),
             manifest: manifest("myapp", "myapp"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -923,6 +987,8 @@ mod tests {
             project_dir: None,
             manifest: manifest(id, id),
             registered_at: ts,
+            icon: None,
+            logo: None,
         };
         let mut entries = vec![
             entry("old", Some(100)),
@@ -948,6 +1014,8 @@ mod tests {
             project_dir: Some(project.clone()),
             manifest: manifest("devapp", "devapp"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         let installed = RegistryEntry::installed(manifest("app", "app"));
         assert_eq!(workdir_for(&layout, &dev), project);
@@ -969,6 +1037,8 @@ mod tests {
             project_dir: Some(project.clone()),
             manifest: manifest("devapp", "devapp"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         let installed = RegistryEntry::installed(manifest("app", "app"));
         assert_eq!(config_path_for(&layout, &dev), project.join("config.toml"));
@@ -1021,6 +1091,8 @@ mod tests {
             project_dir: Some(project),
             manifest: manifest("devapp", "devns"),
             registered_at: Some(42),
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1047,6 +1119,8 @@ mod tests {
             project_dir: Some(dir.path().join("gone")),
             manifest: manifest("devapp", "devns"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1075,6 +1149,8 @@ mod tests {
             project_dir: Some(project),
             manifest: manifest("devapp", "devns"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1097,6 +1173,8 @@ mod tests {
             project_dir: Some(project),
             manifest: manifest("devapp", "devns"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1159,6 +1237,8 @@ mod tests {
             project_dir: Some(project),
             manifest: manifest("devapp", "devns"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1204,6 +1284,8 @@ mod tests {
             project_dir: Some(project),
             manifest: manifest("devapp", "devns"),
             registered_at: Some(1234567890),
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1233,6 +1315,8 @@ mod tests {
             project_dir: Some(project),
             manifest: manifest("devapp", "devns"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1290,6 +1374,8 @@ mod tests {
             project_dir: Some(dir.path().join("gone")),
             manifest: manifest("devapp", "devns"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         persist_entry_sync(&layout, &entry).unwrap();
 
@@ -1320,6 +1406,8 @@ mod tests {
             project_dir: Some(project.clone()),
             manifest: manifest("devapp", "devapp"),
             registered_at: None,
+            icon: None,
+            logo: None,
         };
         // launch.command is relative to project_dir: a missing artifact → an instructive error
         let err = ensure_launch_artifact(&dev).unwrap_err();

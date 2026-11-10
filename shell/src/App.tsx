@@ -45,6 +45,53 @@ const initialTheme: Theme =
   localStorage.getItem("sl-theme") === "dark" ? "dark" : "light";
 document.documentElement.dataset.theme = initialTheme;
 
+/**
+ * Built-in neutral placeholder for menu icons (a component silhouette:
+ * a rounded container with two content dots). Rendered inline — an SVG
+ * loaded through `<img>` resolves currentColor in its own document
+ * context and would not follow the page palette; inline is the only form
+ * that tracks the theme text color for free.
+ */
+function PlaceholderMenuIcon() {
+  return (
+    <svg className="menu-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect
+        x="1.5"
+        y="1.5"
+        width="13"
+        height="13"
+        rx="3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <circle cx="5.5" cy="8" r="1.25" fill="currentColor" />
+      <circle cx="10.5" cy="8" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * A menu entry's icon, three states: the component's install-detected
+ * icon → the built-in placeholder when the package ships none → the
+ * placeholder again on load failure (a deleted file degrades to the
+ * placeholder, never a broken image or a bare text entry).
+ */
+function MenuIcon({ component }: { component: ComponentInfo }) {
+  const [failed, setFailed] = useState(false);
+  if (!component.icon || failed) {
+    return <PlaceholderMenuIcon />;
+  }
+  return (
+    <img
+      className="menu-icon"
+      src={`${SHELL_ORIGIN}/comps/${component.id}/icon`}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function App() {
   const { t } = useTranslation();
   const [route, setRoute] = useState<Route>(route$.value);
@@ -156,6 +203,10 @@ export default function App() {
                   )
                 }
               >
+                {/* Menu icon, three states (detected icon / built-in
+                    placeholder / placeholder on load failure) — see
+                    MenuIcon */}
+                <MenuIcon component={c} />
                 {title}
               </button>
             );

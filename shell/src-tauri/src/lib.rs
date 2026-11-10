@@ -21,6 +21,8 @@
 //! UI containers (module/iframe tiers, webview injection) belong to module 3,
 //! second stage.
 
+#[cfg(test)]
+mod asset_scope_tests;
 pub mod auth;
 pub mod commands;
 pub mod config;
@@ -141,6 +143,7 @@ pub fn run() {
             shell_token,
             commands::list_components,
             commands::install_component,
+            commands::install_component_from_url,
             commands::uninstall_component,
             commands::create_component,
             commands::import_component,

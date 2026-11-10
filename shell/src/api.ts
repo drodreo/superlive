@@ -62,6 +62,14 @@ export interface ComponentInfo {
   source: ComponentSource;
   /** The project directory for dev entries; null for installed. */
   project_dir: string | null;
+  /**
+   * Menu icon file name detected at install time (the `icon.<ext>`
+   * convention, relative to the install directory root; served at
+   * `/comps/{id}/icon`). null = render a text-only menu entry.
+   */
+  icon: string | null;
+  /** Logo file name, same convention as `icon` (served at `/comps/{id}/logo`). */
+  logo: string | null;
 }
 
 // ---------- Shell-level token: a singleton fetched once at startup ----------
@@ -92,6 +100,16 @@ export const listComponents = (): Observable<ComponentInfo[]> =>
 /** Install a component package (zip disk path). */
 export const installComponent = (zipPath: string): Observable<ComponentInfo> =>
   invoke$<ComponentInfo>("install_component", { zipPath });
+
+/**
+ * Install a component package from a remote http(s) URL. Call only after the
+ * user confirmed (the URL's origin cannot be verified); the backend performs
+ * the same package validation as a disk install.
+ */
+export const installComponentFromUrl = (
+  url: string,
+): Observable<ComponentInfo> =>
+  invoke$<ComponentInfo>("install_component_from_url", { url });
 
 /** Uninstall a component (stop the process first, then delete data). */
 export const uninstallComponent = (id: string): Observable<void> =>
