@@ -160,6 +160,21 @@ shell picks by fixed priority: svg first, then png, gif, webp, jpg, jpeg,
 avif, bmp, ico. Ship no such file and the menu entry stays text-only —
 nothing else changes.
 
+## Reading local files
+
+A component UI can read local media files (videos, audio, pictures) through
+the shell's asset protocol. Build the URL from the absolute file path,
+percent-encoded — a cross-origin iframe constructs it directly, no SDK call
+involved:
+
+    macOS / Linux:  asset://localhost/<encoded-path>
+    Windows:        http://asset.localhost/<encoded-path>
+
+The channel is scoped by a deny list: SSH/GPG key directories
+(`$HOME/.ssh`, `$HOME/.gnupg`) and the shell's own data tree are refused
+with 403; user files elsewhere (home, downloads, media folders) read like
+any other web resource.
+
 ## Component info
 
 `info.json` at the project root is a free-form description file for you, the

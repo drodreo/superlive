@@ -17,7 +17,14 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["**"],
+          "deny": ["$HOME/.ssh/**", "$HOME/.gnupg/**", "$APPDATA/**"]
+        }
+      }
     }
   },
   "plugins": {
