@@ -19,6 +19,9 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
+#[cfg(windows)]
+use superlive_process_guard::assign_child_to_kill_on_close_job;
+use superlive_process_guard::configure_command;
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::watch;
@@ -158,73 +161,6 @@ fn absolute_launch_command(command: &str, workdir: &Path) -> PathBuf {
     workdir.join(command).components().collect::<PathBuf>()
 }
 
-/// Windows orphan guard: assign a freshly spawned component process to a
-/// global job object created with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
-///
-/// The shell process owns the only job handle and never closes it: any form
-/// of shell death (normal exit, crash, external kill) closes the handle, and
-/// the kernel then terminates every component in the job — the Windows
-/// equivalent of the Linux PDEATHSIG guard. A stale component process
-/// surviving its shell is not a hypothetical: it holds a sharing violation
-/// on the install directory, and every later update of that component fails
-/// until the process is killed by hand.
-///
-/// Failure here only degrades the guard (the component keeps running
-/// normally), so callers log a warning instead of failing the spawn.
-#[cfg(windows)]
-fn assign_child_to_kill_on_close_job(child: &mut Child) -> io::Result<()> {
-    use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
-
-    let job = kill_on_close_job_handle() as windows_sys::Win32::Foundation::HANDLE;
-    let child_handle = child
-        .raw_handle()
-        .ok_or_else(|| io::Error::other("the child handle is already gone"))?;
-    let assigned = unsafe { AssignProcessToJobObject(job, child_handle) };
-    if assigned == 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(())
-}
-
-/// The process-lifetime KILL_ON_JOB_CLOSE job every component is assigned
-/// to. Lazily created once, owned by this static (never closed): the handle
-/// dies with the shell process, and the kernel then kills the job members.
-/// Stored as isize (the raw HANDLE is a pointer, not Send/Sync-safe for a
-/// static).
-#[cfg(windows)]
-static KILL_ON_CLOSE_JOB: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
-
-/// Get (creating on first use) the global KILL_ON_JOB_CLOSE job handle (as
-/// isize; cast to HANDLE at the call sites). Exposed separately so tests
-/// can assert membership of this *specific* job (an IsProcessInJob(NULL)
-/// check would also answer true for an inherited sandbox job, which would
-/// not prove our guard did anything).
-#[cfg(windows)]
-pub(crate) fn kill_on_close_job_handle() -> isize {
-    *KILL_ON_CLOSE_JOB.get_or_init(|| unsafe {
-        use windows_sys::Win32::System::JobObjects::{
-            CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        };
-        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let applied = SetInformationJobObject(
-            job,
-            JobObjectExtendedLimitInformation,
-            &limits as *const _ as *const core::ffi::c_void,
-            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-        );
-        if applied == 0 {
-            log::error!(
-                "KILL_ON_JOB_CLOSE not applied to the component job object (orphan guard inert): {}",
-                io::Error::last_os_error()
-            );
-        }
-        job as isize
-    })
-}
-
 /// Full component start flow: allocate endpoint → spawn (env injection) →
 /// health polling →
 /// register + start supervise. Any step failing reclaims the already-created
@@ -295,47 +231,11 @@ pub async fn spawn_component(
         .stderr(Stdio::piped())
         .env(ENV_ENDPOINT, endpoint.to_string())
         .env(ENV_TOKEN, token.as_str())
-        .current_dir(&workdir)
-        // Startup-window leak guard: if this spawn future is cancelled while
-        // the child is still starting (health probe pending, not yet
-        // registered) or the async runtime tears the supervise task down,
-        // the Child drops — tokio would detach the process by default, so
-        // kill_on_drop turns that drop into a kill. A guard for that window
-        // only, not a substitute for the graceful shell-exit sweep (which
-        // goes through request_stop + supervise).
-        .kill_on_drop(true);
-
-    #[cfg(target_os = "linux")]
-    {
-        // Orphan-source fix: the kernel delivers SIGKILL to the component the
-        // moment the shell dies (any form — crash, external kill, normal
-        // exit), so a dead shell can no longer leak live component processes.
-        // prctl/PDEATHSIG is Linux-only: macOS has no kernel-level
-        // equivalent — there, a normal shell exit is handled by the run-event
-        // graceful sweep plus the Child kill_on_drop teardown reclaim, and a
-        // shell crash or SIGKILL is not covered by either mechanism. The
-        // Windows counterpart is the KILL_ON_JOB_CLOSE job assignment right
-        // after spawn (see assign_child_to_kill_on_close_job); it is also
-        // per-thread (it watches the thread that forked): tokio worker
-        // threads live as long as the process, which makes it safe here —
-        // never move this spawn into `spawn_blocking` (disposable blocking
-        // threads would kill healthy components).
-        let shell_pid = nix::unistd::getpid().as_raw();
-        unsafe {
-            command.pre_exec(move || {
-                nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
-                    .map_err(io::Error::other)?;
-                // Race window: if the shell died between fork and prctl, the
-                // signal never fires — a parent already different from the
-                // spawning shell means we are an orphan right now; exit
-                // immediately (async-signal-safe _exit, exec never happens).
-                if nix::unistd::getppid().as_raw() != shell_pid {
-                    libc::_exit(1);
-                }
-                Ok(())
-            });
-        }
-    }
+        .current_dir(&workdir);
+    // Parent-death guards (kill_on_drop everywhere, Linux PDEATHSIG with
+    // its fork-exec race backstop) live in the shared process-guard crate —
+    // the process-death probe and tests exercise this exact configuration.
+    configure_command(&mut command);
 
     let mut child = command.spawn().map_err(|source| LifecycleError::Spawn {
         source,
@@ -1626,59 +1526,5 @@ mod tests {
             content.trim_end().lines().last().unwrap(),
             "tail=1 keeps only the final line"
         );
-    }
-}
-
-/// Windows-side tests, compiled under `cfg(all(test, windows))` so
-/// `cargo check --all-targets` covers them in CI: the unix test module
-/// above is cfg'd out on Windows, which previously left the job-object
-/// regression uncompiled there. The shell test binary still cannot *run*
-/// on Windows (tauri entry-point issue, see ci.yml) — compilation is the
-/// covered surface, not a runtime verification.
-#[cfg(all(test, windows))]
-mod windows_tests {
-    /// The Windows orphan guard must actually cover spawned children: a
-    /// child assigned to the KILL_ON_JOB_CLOSE job answers
-    /// IsProcessInJob(hJob) = TRUE. Membership is asserted against *this*
-    /// job (not NULL — an inherited sandbox job would also answer true) so
-    /// the assignment itself is what is proven. Anchor of the 2026-11-09
-    /// stale-process incident: without the guard, a shell death leaks live
-    /// component processes that then permanently lock the install directory.
-    #[tokio::test]
-    async fn kill_on_close_job_covers_spawned_children() {
-        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-        use windows_sys::Win32::System::JobObjects::IsProcessInJob;
-        use windows_sys::Win32::System::Threading::{
-            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        };
-
-        // tokio Child: the production assign path goes through
-        // Child::raw_handle(), only available on the tokio type
-        let mut child = tokio::process::Command::new(
-            std::env::var_os("ComSpec").unwrap_or_else(|| "cmd.exe".into()),
-        )
-        .args(["/d", "/c", "ping", "-n", "30", "127.0.0.1"])
-        .spawn()
-        .unwrap();
-        super::assign_child_to_kill_on_close_job(&mut child).unwrap();
-
-        unsafe {
-            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, child.id().unwrap());
-            assert!(
-                process as isize != 0,
-                "OpenProcess failed on the fresh child"
-            );
-            let mut in_job = 0i32;
-            let job = super::kill_on_close_job_handle() as HANDLE;
-            let ok = IsProcessInJob(process, job, &mut in_job);
-            CloseHandle(process);
-            assert!(ok != 0, "IsProcessInJob failed");
-            assert!(
-                in_job != 0,
-                "the spawned child must live in the KILL_ON_JOB_CLOSE job"
-            );
-        }
-        let _ = child.start_kill();
-        let _ = child.wait().await;
     }
 }

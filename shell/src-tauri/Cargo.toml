@@ -48,6 +48,11 @@ slsdk-rs = { path = "../../slsdk-rs" }
 # Built-in creation flow: standard three-shape project scaffolding,
 # same-repo path
 slscaffold = { path = "../../slscaffold" }
+# Parent-death process guards (kill_on_drop / Linux PDEATHSIG / Windows
+# KILL_ON_JOB_CLOSE job): the single implementation shared by the shell and
+# the process-death tests — a workspace member, so both crates share one
+# Cargo.lock and one target directory.
+superlive-process-guard = { path = "process-guard" }
 # Dev manifest files fingerprinting (create flow); also covers the tests
 sha2 = "0.10"
 # Configuration-plane shell-side required-field comparison: reads the
@@ -67,16 +72,16 @@ tauri-plugin-log = "2.9.2"
 # nix is the safe wrapper, no unsafe)
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process"] }
-# PDEATHSIG fork-exec race backstop: libc::_exit (async-signal-safe) inside
-# pre_exec; already in the tree via nix — declared here, zero extra compilation
+# installer: stale-process kill (libc::kill) and EACCES classification. The
+# PDEATHSIG fork-exec backstop now lives in the process-guard crate, which
+# declares its own libc.
 libc = "0.2"
 
-# Windows orphan guard (lifecycle): components are assigned to a job object
-# with KILL_ON_JOB_CLOSE — the kernel kills them when the shell dies in any
-# form, mirroring the Linux PDEATHSIG semantics.
 # Windows orphan sweeper (installer): toolhelp32 process snapshot + image-path
 # matching + termination, clearing stale component processes that hold a
-# sharing violation on the install directory.
+# sharing violation on the install directory. (The lifecycle job-object guard
+# itself moved into the process-guard crate, which declares its own
+# windows-sys.)
 # Already in the tree via tauri/wry — declared here for direct use.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
@@ -101,3 +106,8 @@ futures-core = "0.3"
 # protocol/asset.rs tests use). Unified with [dependencies] tauri in test
 # builds only; production builds keep the [dependencies] feature set.
 tauri = { version = "2", features = ["test"] }
+
+# Workspace root: the process-guard crate lives below this manifest, so both
+# crates share one Cargo.lock and one target directory.
+[workspace]
+members = ["process-guard"]
