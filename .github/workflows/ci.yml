@@ -25,6 +25,7 @@ jobs:
             slsdk-rs
             slscaffold
             shell/src-tauri
+            process-guard
       - name: Install tauri system deps (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -65,7 +66,7 @@ jobs:
       # cross-platform kill_on_drop reclaim. Single-threaded: each test
       # spawns a real process tree and must not interleave with another.
       - name: cargo test (process-guard, all platforms)
-        run: cargo test --manifest-path shell/src-tauri/process-guard/Cargo.toml -- --test-threads=1
+        run: cargo test --manifest-path process-guard/Cargo.toml -- --test-threads=1
       - name: cargo check (shell crate, windows, incl. test targets)
         if: runner.os == 'Windows'
         # The shell test binary still cannot run on Windows (see the step
@@ -81,14 +82,14 @@ jobs:
           cargo fmt --check --manifest-path slsdk-rs/Cargo.toml
           cargo fmt --check --manifest-path slscaffold/Cargo.toml
           cargo fmt --check --manifest-path shell/src-tauri/Cargo.toml
-          cargo fmt --check --manifest-path shell/src-tauri/process-guard/Cargo.toml
+          cargo fmt --check --manifest-path process-guard/Cargo.toml
       - name: cargo clippy --all-targets -D warnings (Linux)
         if: runner.os == 'Linux'
         run: |
           cargo clippy --all-targets --manifest-path slsdk-rs/Cargo.toml -- -D warnings
           cargo clippy --all-targets --manifest-path slscaffold/Cargo.toml -- -D warnings
           cargo clippy --all-targets --manifest-path shell/src-tauri/Cargo.toml -- -D warnings
-          cargo clippy --all-targets --manifest-path shell/src-tauri/process-guard/Cargo.toml -- -D warnings
+          cargo clippy --all-targets --manifest-path process-guard/Cargo.toml -- -D warnings
 
   web:
     name: web (format + typecheck + test + build + smoke)

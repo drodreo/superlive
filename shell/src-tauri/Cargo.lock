@@ -3715,7 +3715,6 @@ dependencies = [
  "libc",
  "log",
  "nix",
- "tempfile",
  "tokio",
  "windows-sys 0.59.0",
 ]

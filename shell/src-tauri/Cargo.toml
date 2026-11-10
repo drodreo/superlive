@@ -50,9 +50,10 @@ slsdk-rs = { path = "../../slsdk-rs" }
 slscaffold = { path = "../../slscaffold" }
 # Parent-death process guards (kill_on_drop / Linux PDEATHSIG / Windows
 # KILL_ON_JOB_CLOSE job): the single implementation shared by the shell and
-# the process-death tests — a workspace member, so both crates share one
-# Cargo.lock and one target directory.
-superlive-process-guard = { path = "process-guard" }
+# the process-death tests. An independent crate in this repo (process-guard/,
+# with its own Cargo.lock and target), wired in through a plain path
+# dependency.
+superlive-process-guard = { path = "../../process-guard" }
 # Dev manifest files fingerprinting (create flow); also covers the tests
 sha2 = "0.10"
 # Configuration-plane shell-side required-field comparison: reads the
@@ -106,8 +107,3 @@ futures-core = "0.3"
 # protocol/asset.rs tests use). Unified with [dependencies] tauri in test
 # builds only; production builds keep the [dependencies] feature set.
 tauri = { version = "2", features = ["test"] }
-
-# Workspace root: the process-guard crate lives below this manifest, so both
-# crates share one Cargo.lock and one target directory.
-[workspace]
-members = ["process-guard"]
