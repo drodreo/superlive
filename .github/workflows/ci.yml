@@ -25,6 +25,7 @@ jobs:
             slsdk-rs
             slscaffold
             shell/src-tauri
+            process-guard
       - name: Install tauri system deps (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -59,6 +60,20 @@ jobs:
       - name: cargo test (shell crate, non-windows)
         if: runner.os != 'Windows'
         run: cargo test --manifest-path shell/src-tauri/Cargo.toml
+      # Real parent-death tests (real processes, OS liveness APIs) — this is
+      # where the Windows runtime verification of the KILL_ON_JOB_CLOSE guard
+      # actually happens, alongside the Linux PDEATHSIG guard and the
+      # cross-platform kill_on_drop reclaim. Single-threaded: each test
+      # spawns a real process tree and must not interleave with another.
+      - name: cargo test (process-guard, all platforms)
+        run: cargo test --manifest-path process-guard/Cargo.toml -- --test-threads=1
+      - name: cargo check (shell crate, windows, incl. test targets)
+        if: runner.os == 'Windows'
+        # The shell test binary still cannot run on Windows (see the step
+        # above); this keeps its test code compiling. Compilation only — the
+        # runtime verification for the process-death guards lives in the
+        # process-guard test step, which runs on Windows.
+        run: cargo check --all-targets --manifest-path shell/src-tauri/Cargo.toml
       # Format and lint checks run once on Linux: rustfmt/clippy behavior is
       # pinned by rust-toolchain.toml, so one platform is authoritative.
       - name: cargo fmt --check (Linux)
@@ -67,12 +82,14 @@ jobs:
           cargo fmt --check --manifest-path slsdk-rs/Cargo.toml
           cargo fmt --check --manifest-path slscaffold/Cargo.toml
           cargo fmt --check --manifest-path shell/src-tauri/Cargo.toml
+          cargo fmt --check --manifest-path process-guard/Cargo.toml
       - name: cargo clippy --all-targets -D warnings (Linux)
         if: runner.os == 'Linux'
         run: |
           cargo clippy --all-targets --manifest-path slsdk-rs/Cargo.toml -- -D warnings
           cargo clippy --all-targets --manifest-path slscaffold/Cargo.toml -- -D warnings
           cargo clippy --all-targets --manifest-path shell/src-tauri/Cargo.toml -- -D warnings
+          cargo clippy --all-targets --manifest-path process-guard/Cargo.toml -- -D warnings
 
   web:
     name: web (format + typecheck + test + build + smoke)

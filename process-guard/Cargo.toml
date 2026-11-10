@@ -1,0 +1,39 @@
+[package]
+name = "superlive-process-guard"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.85"
+description = "Parent-death process guards shared by the shell and its process-death tests: kill_on_drop configuration, Linux PDEATHSIG, Windows KILL_ON_JOB_CLOSE job."
+
+[dependencies]
+# The probe bin is a build target of this crate (the integration tests
+# launch it via CARGO_BIN_EXE), so its runtime needs — the tokio
+# entry-point macro and the sleep-based gates — belong to the normal
+# dependency set, not to dev-only features.
+tokio = { version = "1", features = ["process", "rt-multi-thread", "macros", "time"] }
+# Job-assignment failure diagnostics (surfaced by the caller's logging)
+log = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+# PDEATHSIG arm (prctl) and the getppid race backstop — the same dependency
+# set the shell crate carries for this exact code: nix safe wrappers,
+# libc::_exit (async-signal-safe) inside pre_exec.
+nix = { version = "0.29", features = ["signal", "process"] }
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# KILL_ON_JOB_CLOSE job creation/assignment (production) and the unit test's
+# IsProcessInJob membership assertion. Already in the tree via tauri/wry —
+# declared here for direct use.
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+# Integration tests spawn real probe processes; the pid/gate files live in
+# temp dirs.
+tempfile = "3"
