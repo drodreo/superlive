@@ -17,8 +17,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::watch;
 
@@ -294,15 +295,25 @@ pub async fn spawn_component(
         .stderr(Stdio::piped())
         .env(ENV_ENDPOINT, endpoint.to_string())
         .env(ENV_TOKEN, token.as_str())
-        .current_dir(&workdir);
+        .current_dir(&workdir)
+        // Startup-window leak guard: if this spawn future is cancelled while
+        // the child is still starting (health probe pending, not yet
+        // registered) or the async runtime tears the supervise task down,
+        // the Child drops — tokio would detach the process by default, so
+        // kill_on_drop turns that drop into a kill. A guard for that window
+        // only, not a substitute for the graceful shell-exit sweep (which
+        // goes through request_stop + supervise).
+        .kill_on_drop(true);
 
     #[cfg(target_os = "linux")]
     {
         // Orphan-source fix: the kernel delivers SIGKILL to the component the
         // moment the shell dies (any form — crash, external kill, normal
         // exit), so a dead shell can no longer leak live component processes.
-        // prctl/PDEATHSIG is Linux-only (macOS has no equivalent — orphan
-        // reaping there relies on the supervisor's own wait loop); the
+        // prctl/PDEATHSIG is Linux-only: macOS has no kernel-level
+        // equivalent — there, a normal shell exit is handled by the run-event
+        // graceful sweep plus the Child kill_on_drop teardown reclaim, and a
+        // shell crash or SIGKILL is not covered by either mechanism. The
         // Windows counterpart is the KILL_ON_JOB_CLOSE job assignment right
         // after spawn (see assign_child_to_kill_on_close_job); it is also
         // per-thread (it watches the thread that forked): tokio worker
@@ -778,6 +789,99 @@ fn request_shutdown(pid: Option<u32>, shutdown_stdin: Option<ChildStdin>, namesp
     }
 }
 
+/// Shell-exit sweep: request a graceful stop of every running component,
+/// then wait until the running table drains (each supervise task removes
+/// its entry right after its process exits). The wait budget covers every
+/// component's full grace path plus overhead; on timeout the remaining
+/// namespaces are logged and the sweep returns anyway — the exit must not
+/// hang on a stuck component; runtime teardown then reclaims any surviving
+/// `Child` through `kill_on_drop`.
+async fn stop_all_components(registry: &Registry) {
+    let namespaces: Vec<String> = registry
+        .list()
+        .await
+        .into_iter()
+        .map(|s| s.namespace)
+        .collect();
+    if namespaces.is_empty() {
+        return;
+    }
+    for namespace in &namespaces {
+        registry.request_stop(namespace).await;
+    }
+    let deadline = Instant::now() + STOP_GRACE + Duration::from_secs(1);
+    loop {
+        if registry.list().await.is_empty() {
+            log::info!("shell exit sweep: all components stopped");
+            return;
+        }
+        if Instant::now() >= deadline {
+            let remaining: Vec<String> = registry
+                .list()
+                .await
+                .into_iter()
+                .map(|s| s.namespace)
+                .collect();
+            log::warn!("shell exit sweep timed out; components still running: {remaining:?}");
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// Exit-cleanup state machine (one AtomicU8): idle = no exit in flight,
+/// cleaning = the async sweep is running, ready = nothing left to wait for
+/// (the sweep finished, or there was nothing to clean). Transitions go
+/// through compare_exchange so a second exit request can never start a
+/// second sweep.
+const EXIT_IDLE: u8 = 0;
+const EXIT_CLEANING: u8 = 1;
+const EXIT_READY: u8 = 2;
+
+static EXIT_CLEANUP_STATE: AtomicU8 = AtomicU8::new(EXIT_IDLE);
+
+/// The Tauri run-event entry (wired from `App::run` in lib.rs). Only
+/// ExitRequested carries shell-exit semantics: hold the exit, sweep the
+/// running components, then re-request the exit with the original code.
+pub(crate) fn handle_run_event(app: &AppHandle, event: RunEvent) {
+    let RunEvent::ExitRequested { code, api, .. } = event else {
+        return;
+    };
+    // The updater handoff calls app.exit(0) before setup manages AppState
+    // (self_update::handoff_updated_shell early-returns the setup): no
+    // component was ever started and `state()` would panic here. Nothing to
+    // clean — mark ready and let that exit proceed untouched.
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        EXIT_CLEANUP_STATE.store(EXIT_READY, Ordering::SeqCst);
+        return;
+    };
+    match EXIT_CLEANUP_STATE.compare_exchange(
+        EXIT_IDLE,
+        EXIT_CLEANING,
+        Ordering::SeqCst,
+        Ordering::SeqCst,
+    ) {
+        // First exit request: hold it, sweep asynchronously, then re-request
+        // the exit (the re-entry lands on the ready arm and exits).
+        Ok(_) => {
+            api.prevent_exit();
+            let registry = Arc::clone(&state.registry);
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                stop_all_components(&registry).await;
+                EXIT_CLEANUP_STATE.store(EXIT_READY, Ordering::SeqCst);
+                app.exit(code.unwrap_or(0));
+            });
+        }
+        // A request while the sweep is in flight (a second window close
+        // racing the finishing app.exit) must also be held: the in-flight
+        // sweep owns the exit.
+        Err(EXIT_CLEANING) => api.prevent_exit(),
+        // Sweep already finished (or nothing to clean): the exit proceeds.
+        Err(_) => {}
+    }
+}
+
 #[cfg(test)]
 #[cfg(unix)]
 mod tests {
@@ -827,52 +931,6 @@ mod tests {
     }
 
     // ---------- health polling ----------
-
-    /// The Windows orphan guard must actually cover spawned children: a
-    /// child assigned to the KILL_ON_JOB_CLOSE job answers
-    /// IsProcessInJob(hJob) = TRUE. Membership is asserted against *this*
-    /// job (not NULL — an inherited sandbox job would also answer true) so
-    /// the assignment itself is what is proven. Anchor of the 2026-11-09
-    /// stale-process incident: without the guard, a shell death leaks live
-    /// component processes that then permanently lock the install directory.
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn kill_on_close_job_covers_spawned_children() {
-        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-        use windows_sys::Win32::System::JobObjects::IsProcessInJob;
-        use windows_sys::Win32::System::Threading::{
-            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        };
-
-        // tokio Child: the production assign path goes through
-        // Child::raw_handle(), only available on the tokio type
-        let mut child = tokio::process::Command::new(
-            std::env::var_os("ComSpec").unwrap_or_else(|| "cmd.exe".into()),
-        )
-        .args(["/d", "/c", "ping", "-n", "30", "127.0.0.1"])
-        .spawn()
-        .unwrap();
-        super::assign_child_to_kill_on_close_job(&mut child).unwrap();
-
-        unsafe {
-            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, child.id().unwrap());
-            assert!(
-                process as isize != 0,
-                "OpenProcess failed on the fresh child"
-            );
-            let mut in_job = 0i32;
-            let job = super::kill_on_close_job_handle() as HANDLE;
-            let ok = IsProcessInJob(process, job, &mut in_job);
-            CloseHandle(process);
-            assert!(ok != 0, "IsProcessInJob failed");
-            assert!(
-                in_job != 0,
-                "the spawned child must live in the KILL_ON_JOB_CLOSE job"
-            );
-        }
-        let _ = child.start_kill();
-        let _ = child.wait().await;
-    }
 
     #[tokio::test]
     async fn healthy_component_is_detected() {
@@ -955,6 +1013,158 @@ mod tests {
         // The socket file was never created by the component; the allocation
         // path should leave nothing behind
         assert!(!layout.socket_path("sleeper").exists());
+    }
+
+    /// Test-only RAII guard, deliberately local to this test module and
+    /// never a production structure: armed right after the pid file parses,
+    /// so any panic or assert failure drops it and SIGKILLs the still-live
+    /// pid. Disarmed only after the process is confirmed gone.
+    struct PidKillGuard {
+        pid: u32,
+        armed: bool,
+    }
+
+    impl PidKillGuard {
+        fn arm(pid: u32) -> Self {
+            Self { pid, armed: true }
+        }
+
+        fn disarm(&mut self) {
+            self.armed = false;
+        }
+    }
+
+    impl Drop for PidKillGuard {
+        fn drop(&mut self) {
+            if self.armed {
+                // Drop is synchronous: the blocking std Command is the only
+                // form available here.
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", &self.pid.to_string()])
+                    .status();
+            }
+        }
+    }
+
+    /// Gone = kill(1) -0 fails, or `ps` reports a zombie state. A zombie
+    /// still answers kill -0 (it sits in the process table) but will never
+    /// run again — counting it alive would spin the assertion to the
+    /// timeout. `ps -o stat=` starts the state column with 'Z' for zombies
+    /// on both macOS and Linux.
+    async fn process_gone(pid: u32) -> bool {
+        let alive = Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .await
+            .expect("kill(1) must be available")
+            .success();
+        if !alive {
+            return true;
+        }
+        let out = Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output()
+            .await
+            .expect("ps(1) must be available");
+        String::from_utf8_lossy(&out.stdout).trim().starts_with('Z')
+    }
+
+    /// A spawn_component future cancelled while the child is still starting
+    /// (health probe pending) must not leak the process: kill_on_drop kills
+    /// the child when the cancelled future drops its Child. Anchor: the
+    /// orphan components observed with PPID=1 after a shell exit. The pid
+    /// file pins the exact pid the shell spawned (`exec` replaces the shell
+    /// image, the pid is unchanged) and the assertion reads live process
+    /// state (kill -0 plus the zombie distinction) — never the file. The
+    /// RAII guard backstops every failure path.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelled_spawn_kills_the_starting_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = DataLayout::new(dir.path());
+        std::fs::create_dir_all(layout.component_dir("canceller")).unwrap();
+        let registry = Arc::new(Registry::new());
+
+        let pid_file = dir.path().join("child.pid");
+        let pending_pid_file = dir.path().join("child.pid.pending");
+        let pid_arg = pid_file.to_string_lossy().into_owned();
+        let pending_pid_arg = pending_pid_file.to_string_lossy().into_owned();
+        let m = Arc::new(manifest(
+            "canceller",
+            "cancellerns",
+            "/bin/sh",
+            &[
+                "-c",
+                &format!(
+                    "echo $$ > \"{pending_pid_arg}\" && mv \"{pending_pid_arg}\" \"{pid_arg}\" && exec sleep 30"
+                ),
+            ],
+        ));
+
+        // No health endpoint exists: the spawn parks in the readiness probe
+        // loop until cancelled — exactly the startup window under test.
+        // The clones move into the spawned block so its future is 'static
+        // (spawn_component borrows them only inside the block).
+        let task_layout = layout.clone();
+        let task_registry = Arc::clone(&registry);
+        let handle = tokio::spawn(async move {
+            spawn_component(
+                &task_layout,
+                &task_registry,
+                m,
+                task_layout.component_dir("canceller"),
+                Duration::from_secs(120),
+                None,
+            )
+            .await
+        });
+
+        // Wait until the child has written its pid (it is execing sleep).
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !pid_file.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the starting child never wrote its pid file"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let pid: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        // Armed from this instant: every path below (success, assert
+        // failure, panic) ends in a guard drop, which SIGKILLs the pid
+        // unless it was confirmed gone and disarmed.
+        let mut guard = PidKillGuard::arm(pid);
+
+        // Cancel the startup: the future unwinds, the Child drops, and
+        // kill_on_drop must take the process down.
+        handle.abort();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), handle)
+                .await
+                .is_ok(),
+            "the cancelled spawn future must return promptly"
+        );
+
+        // The pid must be gone (or a never-runs-again zombie) within the
+        // timeout; past it the assertion fails and the armed guard's Drop
+        // delivers the SIGKILL as the test unwinds.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if process_gone(pid).await {
+                guard.disarm();
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the starting child must be killed within 5s of cancellation"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        // The startup never completed, so nothing may be registered.
+        assert!(registry.list().await.is_empty());
     }
 
     // ---------- supervise graceful stop ----------
@@ -1203,8 +1413,8 @@ mod tests {
     }
 
     /// End-to-end success chain: spawn → health ready → register →
-    /// request_stop →
-    /// graceful exit → registry removal → socket cleanup.
+    /// stop_all_components (the shell-exit sweep) → graceful exit → running
+    /// table drained → socket cleanup.
     /// The real child process uses /bin/sleep to stand in for process
     /// semantics; health is answered by a mock responder pre-occupying the
     /// component socket (full coverage of the shell-side judgment chain).
@@ -1253,17 +1463,16 @@ mod tests {
         // Registered
         assert!(registry.lookup("e2ens").await.is_some());
 
-        // Request graceful stop → supervise SIGTERMs /bin/sleep → removal +
-        // socket cleanup
-        assert!(registry.request_stop("e2ens").await);
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while registry.lookup("e2ens").await.is_some() {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "it should be removed from the registry after stop"
-            );
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        // Shell-exit path: the sweep requests the graceful stop of every
+        // running entry (supervise SIGTERMs /bin/sleep → removal + socket
+        // cleanup) and waits for the running table to drain before
+        // returning.
+        stop_all_components(&registry).await;
+        assert!(
+            registry.list().await.is_empty(),
+            "the running table must be empty after the exit sweep"
+        );
+        assert!(registry.lookup("e2ens").await.is_none());
         // The socket file has been cleaned up (the mock responder's
         // connection drops with it)
         assert!(
@@ -1417,5 +1626,59 @@ mod tests {
             content.trim_end().lines().last().unwrap(),
             "tail=1 keeps only the final line"
         );
+    }
+}
+
+/// Windows-side tests, compiled under `cfg(all(test, windows))` so
+/// `cargo check --all-targets` covers them in CI: the unix test module
+/// above is cfg'd out on Windows, which previously left the job-object
+/// regression uncompiled there. The shell test binary still cannot *run*
+/// on Windows (tauri entry-point issue, see ci.yml) — compilation is the
+/// covered surface, not a runtime verification.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    /// The Windows orphan guard must actually cover spawned children: a
+    /// child assigned to the KILL_ON_JOB_CLOSE job answers
+    /// IsProcessInJob(hJob) = TRUE. Membership is asserted against *this*
+    /// job (not NULL — an inherited sandbox job would also answer true) so
+    /// the assignment itself is what is proven. Anchor of the 2026-11-09
+    /// stale-process incident: without the guard, a shell death leaks live
+    /// component processes that then permanently lock the install directory.
+    #[tokio::test]
+    async fn kill_on_close_job_covers_spawned_children() {
+        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows_sys::Win32::System::JobObjects::IsProcessInJob;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+
+        // tokio Child: the production assign path goes through
+        // Child::raw_handle(), only available on the tokio type
+        let mut child = tokio::process::Command::new(
+            std::env::var_os("ComSpec").unwrap_or_else(|| "cmd.exe".into()),
+        )
+        .args(["/d", "/c", "ping", "-n", "30", "127.0.0.1"])
+        .spawn()
+        .unwrap();
+        super::assign_child_to_kill_on_close_job(&mut child).unwrap();
+
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, child.id().unwrap());
+            assert!(
+                process as isize != 0,
+                "OpenProcess failed on the fresh child"
+            );
+            let mut in_job = 0i32;
+            let job = super::kill_on_close_job_handle() as HANDLE;
+            let ok = IsProcessInJob(process, job, &mut in_job);
+            CloseHandle(process);
+            assert!(ok != 0, "IsProcessInJob failed");
+            assert!(
+                in_job != 0,
+                "the spawned child must live in the KILL_ON_JOB_CLOSE job"
+            );
+        }
+        let _ = child.start_kill();
+        let _ = child.wait().await;
     }
 }

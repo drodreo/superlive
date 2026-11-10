@@ -59,6 +59,13 @@ jobs:
       - name: cargo test (shell crate, non-windows)
         if: runner.os != 'Windows'
         run: cargo test --manifest-path shell/src-tauri/Cargo.toml
+      - name: cargo check (shell crate, windows, incl. test targets)
+        if: runner.os == 'Windows'
+        # The shell test binary cannot run on Windows (see the step above),
+        # but the test code must still compile there — this covers the
+        # windows-only test module. Compilation only: it is not a runtime
+        # verification.
+        run: cargo check --all-targets --manifest-path shell/src-tauri/Cargo.toml
       # Format and lint checks run once on Linux: rustfmt/clippy behavior is
       # pinned by rust-toolchain.toml, so one platform is authoritative.
       - name: cargo fmt --check (Linux)
