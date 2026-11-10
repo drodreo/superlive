@@ -56,8 +56,10 @@ async fn process_gone(pid: u32) -> bool {
     {
         use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, HANDLE};
         use windows_sys::Win32::System::Threading::{
-            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, STILL_ACTIVE,
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         };
+        // Windows API STILL_ACTIVE is defined as 259.
+        const STILL_ACTIVE: u32 = 259;
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) as HANDLE;
             if handle.is_null() {
