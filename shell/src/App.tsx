@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { useTranslation } from "react-i18next";
+import { BehaviorSubject } from "rxjs";
 import {
   listComponents,
   SHELL_ORIGIN,
@@ -23,26 +24,40 @@ import { ComponentManager } from "./ComponentManager";
 import { SettingsPage } from "./SettingsPage";
 import { WelcomePage } from "./WelcomePage";
 import { ActivityBar, type Theme } from "./ActivityBar";
+import { theme$ } from "./theme";
 import "./App.css";
 
 // Shell environment injection: component UIs read { token, origin } from
-// window.__SL_SHELL__ to make /api calls. Placed at module top level —
-// evaluation fires it, before any component mounts or the first fetch;
-// an idempotent write, since the token is the shell-level singleton.
+// window.__SL_SHELL__ to make /api calls, plus the theme API — the static
+// `theme` snapshot and the live `theme$` stream (components follow the
+// shell's theme via @shell/sdk/ui's useShellTheme; the stream singleton is
+// created synchronously at this module's import time, so the write below
+// always has it). Placed at module top level — evaluation fires it, before
+// any component mounts or the first fetch; an idempotent write, since the
+// token is the shell-level singleton.
 void shellToken().then((token) => {
   (
-    window as unknown as { __SL_SHELL__?: { token: string; origin: string } }
+    window as unknown as {
+      __SL_SHELL__?: {
+        token: string;
+        origin: string;
+        theme: Theme;
+        theme$: BehaviorSubject<Theme>;
+      };
+    }
   ).__SL_SHELL__ = {
     token,
     origin: SHELL_ORIGIN,
+    theme: theme$.value,
+    theme$: theme$,
   };
 });
 
 // Theme bootstrap: stamp the persisted theme on <html> at module eval —
 // ahead of React's first render, so dark-theme users get no light-mode
-// flash on launch.
-const initialTheme: Theme =
-  localStorage.getItem("sl-theme") === "dark" ? "dark" : "light";
+// flash on launch. The persisted value (localStorage sl-theme) is read by
+// theme.ts into the theme$ singleton; this snapshot mirrors its current value.
+const initialTheme: Theme = theme$.value;
 document.documentElement.dataset.theme = initialTheme;
 
 /**
@@ -235,9 +250,13 @@ export default function App() {
         <ActivityBar
           title={moduleTitle}
           theme={theme}
-          onToggleTheme={() =>
-            setTheme((t) => (t === "light" ? "dark" : "light"))
-          }
+          onToggleTheme={() => {
+            // One toggle, two mirrors: theme$.next (components re-render
+            // through useShellTheme) + local state (the shell's own palette).
+            const next: Theme = theme === "light" ? "dark" : "light";
+            theme$.next(next);
+            setTheme(next);
+          }}
         />
 
         <main className="content">

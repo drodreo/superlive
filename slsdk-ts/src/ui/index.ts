@@ -13,7 +13,7 @@
  *   a distributable vocabulary with mergeCatalog; the catalog's TS companion types ride
  *   along for programmatic description construction (the machinery — surface/data
  *   model/binding — stays internal)
- * - hooks (createEntityHook / useReferenceOptions / useShellState)
+ * - hooks (createEntityHook / useReferenceOptions / useShellState / useShellTheme)
  * - utils (datetime)
  * - CSS contract facility (injectUiCss / removeUiCss / useUiCss — components own their styles,
  *   zero concern for consumers; the customization channel is CSS cascade overlay, domain-side overrides need no !important)
@@ -127,6 +127,7 @@ export {
   type ShellEnv,
   type ShellState,
 } from "./hooks/useShellState";
+export { useShellTheme, type Theme } from "./hooks/useShellTheme";
 
 // ===== utils =====
 export { formatDateTime } from "./utils/datetime";
