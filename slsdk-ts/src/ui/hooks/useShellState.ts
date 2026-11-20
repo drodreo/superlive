@@ -9,11 +9,17 @@
  * 'waiting' (components should render null to avoid flashing a fallback page).
  */
 import { useEffect, useState } from "react";
+import type { BehaviorSubject } from "rxjs";
+import type { Theme } from "./useShellTheme";
 
 /** Shell-injected environment (aligned with the shell App.tsx injection shape) */
 export interface ShellEnv {
   token: string;
   origin: string;
+  /** Static initial theme snapshot (written alongside theme$; a degraded shell may carry only this). */
+  theme?: Theme;
+  /** Live theme stream: the shell pushes the current value on every toggle (see useShellTheme). */
+  theme$?: BehaviorSubject<Theme>;
 }
 
 declare global {

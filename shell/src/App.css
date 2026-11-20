@@ -109,7 +109,10 @@ html[data-theme="dark"] {
   --sl-ui-color-primary: var(--accent);
   --sl-ui-color-secondary: var(--info-text);
   --sl-ui-color-error: var(--err-text);
-  --sl-ui-color-bg-primary: var(--bg-app);
+  /* bg-primary = the component page's main backdrop → the panel base solid
+     (the SDK's standalone default, a near-white light tone, sits at the same
+     brightness tier; --bg-base is the raw backdrop under the glass layer). */
+  --sl-ui-color-bg-primary: var(--bg-panel);
   --sl-ui-color-bg-secondary: var(--bg-inset);
   --sl-ui-color-border: var(--border-strong);
   --sl-ui-color-text-primary: var(--text);
